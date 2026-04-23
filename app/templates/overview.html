@@ -20,6 +20,9 @@
             <form method="post" action="/projects/{{ project.id }}/run-judgment">
                 <button type="submit">Run Judgment</button>
             </form>
+            <form method="post" action="/projects/{{ project.id }}/rebuild-read-models">
+                <button type="submit">Rebuild Read Models</button>
+            </form>
         </div>
     </div>
 
@@ -36,6 +39,28 @@
     <div class="detail-block">
         <div class="detail-label">Completion Contract</div>
         <div class="detail-value preserve">{{ project.completion_contract }}</div>
+    </div>
+</section>
+
+<section class="card">
+    <h2>Read Model States</h2>
+    <div class="grid-two">
+        <div class="detail-block">
+            <div class="detail-label">Overview State</div>
+            <pre class="preserve">{{ overview_state or "-" }}</pre>
+        </div>
+        <div class="detail-block">
+            <div class="detail-label">Architecture State</div>
+            <pre class="preserve">{{ architecture_state or "-" }}</pre>
+        </div>
+        <div class="detail-block">
+            <div class="detail-label">Diff State</div>
+            <pre class="preserve">{{ diff_state or "-" }}</pre>
+        </div>
+        <div class="detail-block">
+            <div class="detail-label">Governor State</div>
+            <pre class="preserve">{{ governor_state or "-" }}</pre>
+        </div>
     </div>
 </section>
 

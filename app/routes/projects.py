@@ -5,11 +5,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import SessionLocal
 from app.models import (
+    ArchitectureState,
     Capability,
     ComponentDiff,
     ComponentLink,
+    DiffState,
     FileDiff,
     GovernorCheck,
+    GovernorState,
     LinkDiff,
     Mandate,
     ObservationDiff,
@@ -17,6 +20,7 @@ from app.models import (
     ObservationRun,
     ObservedComponent,
     ObservedFile,
+    OverviewState,
     PolicyRule,
     Project,
     ProjectEvent,
@@ -26,6 +30,7 @@ from app.models import (
 from app.services.comparison_core import compare_observation_runs
 from app.services.judgment_core import run_judgment_for_latest_diff
 from app.services.observation_spine import capture_observation_run
+from app.services.read_model_core import regenerate_read_models
 
 router = APIRouter()
 
@@ -174,6 +179,31 @@ def project_overview(request: Request, project_id: int):
             db.query(ObservationDiff)
             .filter(ObservationDiff.project_id == project_id)
             .order_by(ObservationDiff.id.desc())
+            .first()
+        )
+
+        overview_state = (
+            db.query(OverviewState)
+            .filter(OverviewState.project_id == project_id)
+            .order_by(OverviewState.id.desc())
+            .first()
+        )
+        architecture_state = (
+            db.query(ArchitectureState)
+            .filter(ArchitectureState.project_id == project_id)
+            .order_by(ArchitectureState.id.desc())
+            .first()
+        )
+        diff_state = (
+            db.query(DiffState)
+            .filter(DiffState.project_id == project_id)
+            .order_by(DiffState.id.desc())
+            .first()
+        )
+        governor_state = (
+            db.query(GovernorState)
+            .filter(GovernorState.project_id == project_id)
+            .order_by(GovernorState.id.desc())
             .first()
         )
 
@@ -383,7 +413,10 @@ def project_overview(request: Request, project_id: int):
             "file_diffs": file_diffs,
             "component_diffs": component_diffs,
             "link_diffs": link_diffs,
-        },
+            "overview_state": parse_json_text(overview_state.state_json) if overview_state else None,
+            "architecture_state": parse_json_text(architecture_state.state_json) if architecture_state else None,
+            "diff_state": parse_json_text(diff_state.state_json) if diff_state else None,
+            "governor_state": parse_json_text(governor_state.state_json) if governor_state else None,        },
     )
 
 
@@ -440,6 +473,12 @@ def compare_latest_runs(project_id: int):
 @router.post("/projects/{project_id}/run-judgment")
 def run_judgment(project_id: int):
     run_judgment_for_latest_diff(project_id)
+    return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/rebuild-read-models")
+def rebuild_read_models(project_id: int):
+    regenerate_read_models(project_id)
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
 

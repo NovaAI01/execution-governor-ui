@@ -51,6 +51,26 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    overview_states = relationship(
+        "OverviewState",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    architecture_states = relationship(
+        "ArchitectureState",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    diff_states = relationship(
+        "DiffState",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    governor_states = relationship(
+        "GovernorState",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Capability(Base):
@@ -446,3 +466,47 @@ class ProjectEvent(Base):
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
     project = relationship("Project", back_populates="project_events")
+
+
+class OverviewState(Base):
+    __tablename__ = "overview_state"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    state_json = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="overview_states")
+
+
+class ArchitectureState(Base):
+    __tablename__ = "architecture_state"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    state_json = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="architecture_states")
+
+
+class DiffState(Base):
+    __tablename__ = "diff_state"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    state_json = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="diff_states")
+
+
+class GovernorState(Base):
+    __tablename__ = "governor_state"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    state_json = Column(Text, nullable=False)
+    generated_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="governor_states")
