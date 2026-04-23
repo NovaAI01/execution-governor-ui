@@ -46,6 +46,17 @@ def get_active_mandate_for_project(db, project_id: int):
     )
 
 
+def require_active_mandate(project_id: int) -> str | None:
+    db = SessionLocal()
+    try:
+        mandate = get_active_mandate_for_project(db, project_id)
+        if mandate:
+            return None
+        return "no-active-mandate"
+    finally:
+        db.close()
+
+
 def parse_work_items(raw: str) -> list[str]:
     text = raw.strip()
     if not text:
@@ -185,6 +196,8 @@ def project_overview(request: Request, project_id: int):
     component_diffs = (diff_state or {}).get("component_diffs", [])
     link_diffs = (diff_state or {}).get("link_diffs", [])
 
+    enforcement_error = request.query_params.get("error")
+
     return request.app.state.templates.TemplateResponse(
         request,
         "overview.html",
@@ -212,12 +225,17 @@ def project_overview(request: Request, project_id: int):
             "architecture_state": architecture_state,
             "diff_state": diff_state,
             "governor_state": governor_state,
+            "enforcement_error": enforcement_error,
         },
     )
 
 
 @router.post("/projects/{project_id}/observe")
 def observe_project(project_id: int):
+    error = require_active_mandate(project_id)
+    if error:
+        return RedirectResponse(url=f"/projects/{project_id}?error={error}", status_code=303)
+
     db = SessionLocal()
     try:
         project = get_project_or_none(db, project_id)
@@ -238,6 +256,10 @@ def observe_project(project_id: int):
 
 @router.post("/projects/{project_id}/compare-latest")
 def compare_latest_runs(project_id: int):
+    error = require_active_mandate(project_id)
+    if error:
+        return RedirectResponse(url=f"/projects/{project_id}?error={error}", status_code=303)
+
     db = SessionLocal()
     try:
         project = get_project_or_none(db, project_id)
@@ -270,6 +292,10 @@ def compare_latest_runs(project_id: int):
 
 @router.post("/projects/{project_id}/run-judgment")
 def run_judgment(project_id: int):
+    error = require_active_mandate(project_id)
+    if error:
+        return RedirectResponse(url=f"/projects/{project_id}?error={error}", status_code=303)
+
     run_judgment_for_latest_diff(project_id)
     regenerate_read_models(project_id)
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
@@ -283,6 +309,10 @@ def rebuild_read_models(project_id: int):
 
 @router.post("/projects/{project_id}/work-log")
 def create_work_log(project_id: int, command_text: str = Form(...), notes: str = Form("")):
+    error = require_active_mandate(project_id)
+    if error:
+        return RedirectResponse(url=f"/projects/{project_id}?error={error}", status_code=303)
+
     db = SessionLocal()
     try:
         project = get_project_or_none(db, project_id)

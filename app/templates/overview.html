@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% if enforcement_error == "no-active-mandate" %}
+<section class="card">
+    <div class="empty-state">
+        Action blocked. No active mandate exists for this project. Activate a mandate before running governed actions.
+    </div>
+</section>
+{% endif %}
 <section class="card">
     <div class="list-row">
         <div>
