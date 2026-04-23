@@ -1,0 +1,19 @@
+<div class="section-header">
+    <h2>File Preview</h2>
+    <span class="count-badge">{% if file_preview %}1{% else %}0{% endif %}</span>
+</div>
+
+{% if file_preview %}
+    <div class="detail-block">
+        <div class="detail-label">Path</div>
+        <div class="detail-value preserve">{{ file_preview.path }}</div>
+    </div>
+
+    {% if file_preview.ok %}
+        <pre class="file-preview">{{ file_preview.content }}</pre>
+    {% else %}
+        <div class="empty-state">{{ file_preview.error }}</div>
+    {% endif %}
+{% else %}
+    <div class="empty-state">Select a file from the working tree to view its contents.</div>
+{% endif %}

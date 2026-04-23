@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <h2>Mandate Registry</h2>
+
+    {% if request.query_params.get("error") == "no-active-capability" %}
+        <div class="alert error">
+            No active capability. Activate a capability before creating or activating mandates.
+        </div>
+    {% elif request.query_params.get("error") == "active-mandate-exists" %}
+        <div class="alert error">
+            Only one mandate can be active at a time.
+            {% if request.query_params.get("blocking_title") %}
+                Blocking mandate: <strong>{{ request.query_params.get("blocking_title") }}</strong>
+            {% endif %}
+        </div>
+    {% elif request.query_params.get("error") == "invalid-mandate-transition" %}
+        <div class="alert error">Invalid mandate transition.</div>
+    {% elif request.query_params.get("error") == "mandate-not-found" %}
+        <div class="alert error">Mandate not found.</div>
+    {% elif request.query_params.get("error") == "mandate-outside-active-capability" %}
+        <div class="alert error">Mandate is not under the active capability.</div>
+    {% endif %}
+
+    <div class="notice">
+        {% if active_capability %}
+            Active capability: <strong>{{ active_capability.title }}</strong>
+        {% else %}
+            No active capability. Activate a capability before creating or activating mandates.
+        {% endif %}
+    </div>
+
+    <form class="form-grid" method="post" action="/projects/{{ project.id }}/mandates">
+        <label>
+            <span>Title</span>
+            <input type="text" name="title" required {% if not active_capability %}disabled{% endif %}>
+        </label>
+        <label>
+            <span>Objective</span>
+            <textarea name="objective" rows="3" required {% if not active_capability %}disabled{% endif %}></textarea>
+        </label>
+        <label>
+            <span>Work Items</span>
+            <textarea name="work_items" rows="4" required {% if not active_capability %}disabled{% endif %}></textarea>
+        </label>
+        <label>
+            <span>Required Evidence Summary</span>
+            <textarea name="evidence_summary" rows="3" required {% if not active_capability %}disabled{% endif %}></textarea>
+        </label>
+
+        <div class="detail-block">
+            <div class="detail-label">Initial Status</div>
+            <div class="detail-value">draft</div>
+        </div>
+        <div class="actions">
+            <button type="submit" {% if not active_capability %}disabled{% endif %}>Add Mandate</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h3>Mandates</h3>
+    {% if mandates %}
+        <div class="stack-list">
+            {% for mandate in mandates %}
+                <div class="list-item">
+                    <div class="list-row">
+                        <div>
+                            <div class="item-title">{{ mandate.title }}</div>
+                            <div class="item-meta">
+                                Status: <span class="status-pill status-{{ mandate.status }}">{{ mandate.status }}</span>
+                            </div>
+                        </div>
+                        <div class="inline-actions">
+                            {% if mandate.status == "draft" %}
+
+                                <form method="post" action="/projects/{{ project.id }}/mandates/{{ mandate.id }}/activate">
+                                    <button type="submit" class="button-small">Activate</button>
+                                </form>
+                            {% elif mandate.status == "active" %}
+                                <form method="post" action="/projects/{{ project.id }}/mandates/{{ mandate.id }}/complete">
+                                    <button type="submit" class="button-small button-complete">Complete</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="detail-block">
+                        <div class="detail-label">Objective</div>
+                        <div class="detail-value preserve">{{ mandate.objective }}</div>
+                    </div>
+                    <div class="detail-block">
+                        <div class="detail-label">Work Items JSON</div>
+                        <div class="detail-value preserve">{{ mandate.work_items_json }}</div>
+                    </div>
+                    <div class="detail-block">
+                        <div class="detail-label">Required Evidence Summary</div>
+                        <div class="detail-value preserve">{{ mandate.evidence_summary }}</div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <div class="empty-state">No mandates yet for the current active capability.</div>
+    {% endif %}
+</section>
+{% endblock %}

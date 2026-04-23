@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <h2>Edit Project</h2>
+    <form class="form-grid" method="post" action="/projects/{{ project.id }}/setup">
+        <label>
+            <span>Project Name</span>
+            <input type="text" name="name" required value="{{ project.name }}">
+        </label>
+        <label>
+            <span>Product Idea</span>
+            <textarea name="product_idea" rows="4" required>{{ project.product_idea }}</textarea>
+        </label>
+        <label>
+            <span>Excluded Scope</span>
+            <textarea name="excluded_scope" rows="4" required>{{ project.excluded_scope }}</textarea>
+        </label>
+        <label>
+            <span>Completion Contract</span>
+            <textarea name="completion_contract" rows="4" required>{{ project.completion_contract }}</textarea>
+        </label>
+        <label>
+            <span>Root Path</span>
+            <input type="text" name="root_path" value="{{ project.root_path or '' }}" placeholder="/home/jackisback54321/Dev/execution_governor_ui_v0">
+        </label>
+        <div class="actions">
+            <button type="submit">Save Project</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

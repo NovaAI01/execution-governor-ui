@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <div class="section-header">
+        <h2>Snapshots</h2>
+        <span class="count-badge">{{ snapshots|length }}</span>
+    </div>
+
+    {% if snapshots %}
+        <div class="stack-list">
+            {% for s in snapshots %}
+                <div class="list-item">
+                    <div class="item-title">Snapshot #{{ s[0] }}</div>
+                    <div class="item-meta">{{ s[1] }}</div>
+                    <div class="detail-value">Items: {{ s[2] }}</div>
+
+                    <div class="actions">
+                        <a href="/projects/{{ project_id }}/snapshots/{{ s[0] }}">View</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">No snapshots yet.</div>
+    {% endif %}
+</section>
+{% endblock %}

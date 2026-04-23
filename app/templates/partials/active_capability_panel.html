@@ -1,0 +1,19 @@
+<h2>Active Capability</h2>
+{% if active_capability %}
+    <div class="detail-list">
+        <div class="detail-block">
+            <div class="detail-label">Title</div>
+            <div class="detail-value">{{ active_capability.title }}</div>
+        </div>
+        <div class="detail-block">
+            <div class="detail-label">Outcome</div>
+            <div class="detail-value preserve">{{ active_capability.outcome }}</div>
+        </div>
+        <div class="detail-block">
+            <div class="detail-label">Acceptance Criteria</div>
+            <div class="detail-value preserve">{{ active_capability.acceptance_criteria }}</div>
+        </div>
+    </div>
+{% else %}
+    <div class="empty-state">No active capability. Activate a draft capability to continue execution.</div>
+{% endif %}

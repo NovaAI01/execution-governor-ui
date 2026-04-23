@@ -1,0 +1,20 @@
+<section class="overview-header card">
+    <div class="overview-header-grid">
+        <div>
+            <div class="detail-label">Project</div>
+            <div class="overview-main-value">{{ project.name }}</div>
+        </div>
+        <div>
+            <div class="detail-label">Active Capability</div>
+            <div class="overview-main-value">
+                {% if active_capability %}{{ active_capability.title }}{% else %}None{% endif %}
+            </div>
+        </div>
+        <div>
+            <div class="detail-label">Active Mandate</div>
+            <div class="overview-main-value">
+                {% if active_mandate %}{{ active_mandate.title }}{% else %}None{% endif %}
+            </div>
+        </div>
+    </div>
+</section>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <h2>Create Project</h2>
+    <form class="form-grid" method="post" action="/projects">
+        <label>
+            <span>Project Name</span>
+            <input type="text" name="name" required placeholder="Execution Governor">
+        </label>
+        <label>
+            <span>Product Idea</span>
+            <textarea name="product_idea" rows="4" required></textarea>
+        </label>
+        <label>
+            <span>Excluded Scope</span>
+            <textarea name="excluded_scope" rows="4" required></textarea>
+        </label>
+        <label>
+            <span>Completion Contract</span>
+            <textarea name="completion_contract" rows="4" required></textarea>
+        </label>
+        <label>
+            <span>Root Path</span>
+            <input type="text" name="root_path" placeholder="/home/jackisback54321/Dev/execution_governor_ui_v0">
+        </label>
+        <div class="actions">
+            <button type="submit">Create Project</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Projects</h2>
+    {% if projects %}
+        <div class="stack-list">
+            {% for item in projects %}
+                <div class="list-item">
+                    <div class="list-row">
+                        <div>
+                            <div class="item-title">{{ item.name }}</div>
+                            <div class="item-meta">Created project</div>
+                        </div>
+                        <div class="inline-actions">
+                            <a class="button-small link-button" href="/projects/{{ item.id }}">Open</a>
+                            <a class="button-small link-button" href="/projects/{{ item.id }}/setup">Setup</a>
+                        </div>
+                    </div>
+                    <div class="detail-block">
+                        <div class="detail-label">Product Idea</div>
+                        <div class="detail-value preserve">{{ item.product_idea }}</div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">No projects yet.</div>
+    {% endif %}
+</section>
+{% endblock %}

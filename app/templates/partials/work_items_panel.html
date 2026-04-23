@@ -1,0 +1,10 @@
+<h2>Work Items</h2>
+{% if work_items %}
+    <ul class="work-list">
+        {% for item in work_items %}
+            <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <div class="empty-state">No work items.</div>
+{% endif %}

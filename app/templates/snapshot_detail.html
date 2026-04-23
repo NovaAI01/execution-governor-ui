@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <div class="section-header">
+        <h2>Snapshot {{ snapshot_id }}</h2>
+        <span class="count-badge">{{ entries|length }}</span>
+    </div>
+
+    <div class="tree-list">
+        {% for e in entries %}
+            <div class="tree-row">
+                <span class="tree-prefix">
+                    {% if e[1] == "dir" %}▸{% else %}•{% endif %}
+                </span>
+                <span class="tree-name">{{ e[0] }}</span>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

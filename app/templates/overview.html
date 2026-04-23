@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "partials/overview_header.html" %}
+{% include "partials/overview_metrics.html" %}
+
+<section class="workspace-layout">
+    <aside class="workspace-sidebar card">
+        {% include "partials/working_tree_panel.html" %}
+    </aside>
+
+    <div class="workspace-main">
+        <section class="card" id="file-preview-panel">
+            {% include "partials/file_preview_panel.html" %}
+        </section>
+
+        <section class="grid-two">
+            <div class="card">
+                {% include "partials/project_summary_panel.html" %}
+            </div>
+
+            <div class="card">
+                {% include "partials/active_capability_panel.html" %}
+            </div>
+        </section>
+
+        <section class="grid-two">
+            <div class="card">
+                {% include "partials/active_mandate_panel.html" %}
+            </div>
+
+            <div class="card">
+                {% include "partials/work_items_panel.html" %}
+            </div>
+        </section>
+
+        <section class="card">
+            {% include "partials/completed_mandates_panel.html" %}
+        </section>
+
+        <section class="card">
+            {% include "partials/work_log_panel.html" %}
+        </section>
+    </div>
+</section>
+
+<script>
+document.addEventListener("click", async function (event) {
+    const link = event.target.closest("[data-file-preview-link]");
+    if (!link) return;
+
+    event.preventDefault();
+
+    try {
+        const response = await fetch(link.href, {
+            headers: { "X-Requested-With": "fetch" }
+        });
+        if (!response.ok) return;
+
+        const html = await response.text();
+        const panel = document.getElementById("file-preview-panel");
+        if (panel) {
+            panel.innerHTML = html;
+        }
+
+        document.querySelectorAll("[data-file-preview-link]").forEach((el) => {
+            el.classList.remove("selected-file");
+        });
+        link.classList.add("selected-file");
+    } catch (err) {
+        console.error(err);
+    }
+});
+</script>
+{% endblock %}

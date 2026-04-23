@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <h2>Capability Registry</h2>
+
+    {% if request.query_params.get("error") == "active-capability-exists" %}
+        <div class="alert error">Only one capability can be active at a time.</div>
+    {% elif request.query_params.get("error") == "invalid-capability-transition" %}
+        <div class="alert error">Invalid capability transition.</div>
+    {% elif request.query_params.get("error") == "capability-not-found" %}
+        <div class="alert error">Capability not found.</div>
+    {% elif request.query_params.get("error") == "only-draft-can-delete" %}
+        <div class="alert error">Only draft capabilities can be deleted.</div>
+    {% elif request.query_params.get("error") == "capability-has-active-mandate" %}
+        <div class="alert error">
+            Complete the active mandate first.
+            {% if request.query_params.get("mandate_title") %}
+                Blocking mandate: <strong>{{ request.query_params.get("mandate_title") }}</strong>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <form class="form-grid" method="post" action="/projects/{{ project.id }}/capabilities">
+        <label>
+            <span>Title</span>
+            <input type="text" name="title" required placeholder="UI Shell">
+        </label>
+        <label>
+            <span>Outcome</span>
+            <textarea name="outcome" rows="3" required></textarea>
+        </label>
+        <label>
+            <span>Acceptance Criteria</span>
+            <textarea name="acceptance_criteria" rows="3" required></textarea>
+        </label>
+        <div class="detail-block">
+            <div class="detail-label">Initial Status</div>
+            <div class="detail-value">draft</div>
+        </div>
+        <div class="actions">
+            <button type="submit">Add Capability</button>
+        </div>
+    </form>
+</section>
+
+<section class="card">
+    <h3>Capabilities</h3>
+    {% if capabilities %}
+        <div class="stack-list">
+            {% for capability in capabilities %}
+                <div class="list-item">
+                    <div class="list-row">
+                        <div>
+                            <div class="item-title">{{ capability.title }}</div>
+                            <div class="item-meta">
+                                Status: <span class="status-pill status-{{ capability.status }}">{{ capability.status }}</span>
+                            </div>
+                        </div>
+                        <div class="inline-actions">
+                            {% if capability.status == "draft" %}
+                                <form method="post" action="/projects/{{ project.id }}/capabilities/{{ capability.id }}/activate">
+                                    <button type="submit" class="button-small">Activate</button>
+                                </form>
+                                <form method="post" action="/projects/{{ project.id }}/capabilities/{{ capability.id }}/delete">
+                                    <button type="submit" class="button-small button-danger">Delete</button>
+                                </form>
+                            {% elif capability.status == "active" %}
+                                <form method="post" action="/projects/{{ project.id }}/capabilities/{{ capability.id }}/complete">
+                                    <button type="submit" class="button-small button-complete">Complete</button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="detail-block">
+                        <div class="detail-label">Outcome</div>
+                        <div class="detail-value preserve">{{ capability.outcome }}</div>
+                    </div>
+                    <div class="detail-block">
+                        <div class="detail-label">Acceptance Criteria</div>
+                        <div class="detail-value preserve">{{ capability.acceptance_criteria }}</div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">No capabilities yet for this project.</div>
+    {% endif %}
+</section>
+{% endblock %}
