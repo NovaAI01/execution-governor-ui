@@ -14,6 +14,7 @@ from app.models import (
     ObservedComponent,
     ObservedFile,
 )
+from app.services.read_model_core import regenerate_read_models
 from app.services.timeline_core import record_project_event
 
 IGNORED_DIRS = {
@@ -122,6 +123,7 @@ def _iter_project_files(root: Path, max_files: int):
             break
 
     return included, excluded
+
 
 def _layer_for_path(rel_path: str) -> str:
     if rel_path in LAYER_LABELS:
@@ -367,14 +369,14 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
 
                 pending_links.extend(
                     [
-                        (rel_path, item["target_path"], item["relation_type"], item["label"])
-                        for item in parsed["imports"]
+                        (rel_path, parsed_item["target_path"], parsed_item["relation_type"], parsed_item["label"])
+                        for parsed_item in parsed["imports"]
                     ]
                 )
                 pending_links.extend(
                     [
-                        (rel_path, item["target_path"], item["relation_type"], item["label"])
-                        for item in parsed["renders"]
+                        (rel_path, parsed_item["target_path"], parsed_item["relation_type"], parsed_item["label"])
+                        for parsed_item in parsed["renders"]
                     ]
                 )
 
@@ -394,8 +396,8 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
 
                 pending_links.extend(
                     [
-                        (rel_path, item["target_path"], item["relation_type"], item["label"])
-                        for item in parsed["includes"]
+                        (rel_path, parsed_item["target_path"], parsed_item["relation_type"], parsed_item["label"])
+                        for parsed_item in parsed["includes"]
                     ]
                 )
 
@@ -531,6 +533,8 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
             },
         )
 
+        regenerate_read_models(project_id)
+
         return {
             "run_id": run.id,
             "status": run.status,
@@ -566,6 +570,8 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
                         "failure_reason": failed_run.failure_reason,
                     },
                 )
+
+                regenerate_read_models(project_id)
         finally:
             recovery.close()
 

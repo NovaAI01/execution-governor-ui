@@ -10,6 +10,7 @@ from app.models import (
     ObservedComponent,
     ObservedFile,
 )
+from app.services.read_model_core import regenerate_read_models
 from app.services.timeline_core import record_project_event
 
 
@@ -267,6 +268,8 @@ def compare_observation_runs(project_id: int, from_run_id: int, to_run_id: int) 
                 "link_diff_count": link_diff_count,
             },
         )
+
+        regenerate_read_models(project_id)
 
         return {
             "diff_id": diff.id,

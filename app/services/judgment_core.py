@@ -10,6 +10,7 @@ from app.models import (
     PolicyRule,
     ScopeBinding,
 )
+from app.services.read_model_core import regenerate_read_models
 from app.services.timeline_core import record_project_event
 
 
@@ -97,7 +98,7 @@ def ensure_default_policy_rules() -> list[PolicyRule]:
             },
         ]
 
-        created = False
+        changed_any = False
 
         for spec in defaults:
             row = existing.get(spec["rule_name"])
@@ -110,7 +111,7 @@ def ensure_default_policy_rules() -> list[PolicyRule]:
                         config_json=json.dumps(spec["config_json"], sort_keys=True),
                     )
                 )
-                created = True
+                changed_any = True
             else:
                 changed = False
                 if row.rule_kind != spec["rule_kind"]:
@@ -126,9 +127,9 @@ def ensure_default_policy_rules() -> list[PolicyRule]:
                     changed = True
 
                 if changed:
-                    created = True
+                    changed_any = True
 
-        if created:
+        if changed_any:
             db.commit()
 
         return db.query(PolicyRule).order_by(PolicyRule.id.asc()).all()
@@ -318,7 +319,7 @@ def _decision_for_rule(severity: str | None, matched_items: list[dict]) -> str:
     return "warn"
 
 
-def _rationale_for_rule(rule_name: str, decision: str, matched_items: list[dict], matched_label: str) -> str:
+def _rationale_for_rule(rule_name: str, matched_items: list[dict], matched_label: str) -> str:
     if not matched_items:
         return f"Rule {rule_name} passed. No {matched_label} were found."
     return (
@@ -460,7 +461,7 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
                 continue
 
             decision = _decision_for_rule(rule.severity, matched_items)
-            rationale = _rationale_for_rule(rule.rule_name, decision, matched_items, matched_label)
+            rationale = _rationale_for_rule(rule.rule_name, matched_items, matched_label)
 
             check = GovernorCheck(
                 project_id=project_id,
@@ -503,6 +504,8 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
                 "excluded_paths": excluded_paths,
             },
         )
+
+        regenerate_read_models(project_id)
 
         return {
             "observation_diff_id": latest_diff.id,

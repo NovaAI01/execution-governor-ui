@@ -250,7 +250,6 @@ def observe_project(project_id: int):
     finally:
         db.close()
 
-    regenerate_read_models(project_id)
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
 
@@ -285,7 +284,6 @@ def compare_latest_runs(project_id: int):
     newest = runs[0]
     previous = runs[1]
     compare_observation_runs(project_id, previous.id, newest.id)
-    regenerate_read_models(project_id)
 
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
@@ -297,7 +295,6 @@ def run_judgment(project_id: int):
         return RedirectResponse(url=f"/projects/{project_id}?error={error}", status_code=303)
 
     run_judgment_for_latest_diff(project_id)
-    regenerate_read_models(project_id)
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
 
