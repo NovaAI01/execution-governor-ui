@@ -17,6 +17,9 @@
             <form method="post" action="/projects/{{ project.id }}/compare-latest">
                 <button type="submit">Compare Latest Runs</button>
             </form>
+            <form method="post" action="/projects/{{ project.id }}/run-judgment">
+                <button type="submit">Run Judgment</button>
+            </form>
         </div>
     </div>
 
@@ -177,6 +180,94 @@
         </div>
     {% else %}
         <div class="empty-state">No observation diff yet.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Latest Governor Checks</h2>
+    {% if latest_checks %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Rule</th>
+                    <th>Scope Binding</th>
+                    <th>Status</th>
+                    <th>Decision</th>
+                    <th>Rationale</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in latest_checks %}
+                    <tr>
+                        <td>{{ row.id }}</td>
+                        <td>{{ row.rule_name }}</td>
+                        <td>{{ row.binding_name }}</td>
+                        <td>{{ row.status }}</td>
+                        <td>{{ row.decision }}</td>
+                        <td>{{ row.rationale }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No governor checks yet.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Scope Bindings</h2>
+    {% if scope_bindings %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Included Paths</th>
+                    <th>Excluded Paths</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in scope_bindings %}
+                    <tr>
+                        <td>{{ row.id }}</td>
+                        <td>{{ row.binding_name }}</td>
+                        <td><code>{{ row.included_paths_json }}</code></td>
+                        <td><code>{{ row.excluded_paths_json }}</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No scope bindings yet.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Policy Rules</h2>
+    {% if policy_rules %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Kind</th>
+                    <th>Severity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in policy_rules %}
+                    <tr>
+                        <td>{{ row.id }}</td>
+                        <td>{{ row.rule_name }}</td>
+                        <td>{{ row.rule_kind }}</td>
+                        <td>{{ row.severity }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No policy rules yet.</div>
     {% endif %}
 </section>
 

@@ -6,8 +6,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.db import SessionLocal
 from app.models import (
     Capability,
+    ComponentDiff,
     ComponentLink,
     FileDiff,
+    GovernorCheck,
     LinkDiff,
     Mandate,
     ObservationDiff,
@@ -15,11 +17,13 @@ from app.models import (
     ObservationRun,
     ObservedComponent,
     ObservedFile,
+    PolicyRule,
     Project,
+    ScopeBinding,
     WorkLog,
-    ComponentDiff,
 )
 from app.services.comparison_core import compare_observation_runs
+from app.services.judgment_core import run_judgment_for_latest_diff
 from app.services.observation_spine import capture_observation_run
 
 router = APIRouter()
@@ -153,6 +157,9 @@ def project_overview(request: Request, project_id: int):
             .first()
         )
 
+        latest_checks = []
+        scope_bindings = []
+        policy_rules = []
         observed_files = []
         observed_components = []
         component_links = []
@@ -259,6 +266,14 @@ def project_overview(request: Request, project_id: int):
                 .limit(40)
                 .all()
             )
+            latest_check_rows = (
+                db.query(GovernorCheck, PolicyRule.rule_name, ScopeBinding.binding_name)
+                .join(PolicyRule, GovernorCheck.policy_rule_id == PolicyRule.id)
+                .join(ScopeBinding, GovernorCheck.scope_binding_id == ScopeBinding.id)
+                .filter(GovernorCheck.observation_diff_id == latest_diff.id)
+                .order_by(GovernorCheck.id.asc())
+                .all()
+            )
 
             file_diffs = [
                 {
@@ -288,6 +303,40 @@ def project_overview(request: Request, project_id: int):
                 }
                 for row in link_diff_rows
             ]
+            latest_checks = [
+                {
+                    "id": check.id,
+                    "decision": check.decision,
+                    "status": check.status,
+                    "rationale": check.rationale,
+                    "details_json": parse_json_text(check.details_json),
+                    "rule_name": rule_name,
+                    "binding_name": binding_name,
+                }
+                for check, rule_name, binding_name in latest_check_rows
+            ]
+
+        scope_bindings = [
+            {
+                "id": row.id,
+                "binding_name": row.binding_name,
+                "included_paths_json": parse_json_text(row.included_paths_json),
+                "excluded_paths_json": parse_json_text(row.excluded_paths_json),
+                "notes": row.notes,
+            }
+            for row in db.query(ScopeBinding).filter(ScopeBinding.project_id == project_id).order_by(ScopeBinding.id.asc()).all()
+        ]
+
+        policy_rules = [
+            {
+                "id": row.id,
+                "rule_name": row.rule_name,
+                "rule_kind": row.rule_kind,
+                "severity": row.severity,
+                "config_json": parse_json_text(row.config_json),
+            }
+            for row in db.query(PolicyRule).order_by(PolicyRule.id.asc()).all()
+        ]
     finally:
         db.close()
 
@@ -303,6 +352,9 @@ def project_overview(request: Request, project_id: int):
             "recent_logs": recent_logs,
             "latest_run": latest_run,
             "latest_diff": latest_diff,
+            "latest_checks": latest_checks,
+            "scope_bindings": scope_bindings,
+            "policy_rules": policy_rules,
             "observed_files": observed_files,
             "observed_components": observed_components,
             "component_links": component_links,
@@ -361,6 +413,12 @@ def compare_latest_runs(project_id: int):
     previous = runs[1]
     compare_observation_runs(project_id, previous.id, newest.id)
 
+    return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/run-judgment")
+def run_judgment(project_id: int):
+    run_judgment_for_latest_diff(project_id)
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
 

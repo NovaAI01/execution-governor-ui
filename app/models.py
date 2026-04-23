@@ -26,6 +26,11 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    scope_bindings = relationship(
+        "ScopeBinding",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
     observation_runs = relationship(
         "ObservationRun",
         back_populates="project",
@@ -33,6 +38,11 @@ class Project(Base):
     )
     observation_diffs = relationship(
         "ObservationDiff",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    governor_checks = relationship(
+        "GovernorCheck",
         back_populates="project",
         cascade="all, delete-orphan",
     )
@@ -72,6 +82,24 @@ class Mandate(Base):
     capability = relationship("Capability", back_populates="mandates")
 
 
+class ScopeBinding(Base):
+    __tablename__ = "scope_bindings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    binding_name = Column(String(255), nullable=False)
+    included_paths_json = Column(Text, nullable=False, default="[]")
+    excluded_paths_json = Column(Text, nullable=False, default="[]")
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="scope_bindings")
+    governor_checks = relationship(
+        "GovernorCheck",
+        back_populates="scope_binding",
+    )
+
+
 class WorkLog(Base):
     __tablename__ = "work_logs"
 
@@ -87,6 +115,7 @@ class WorkLog(Base):
 
 class ObservationRun(Base):
     __tablename__ = "observation_runs"
+
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
     root_path = Column(Text, nullable=False)
@@ -160,6 +189,7 @@ class ObservedFile(Base):
         back_populates="observed_file",
         cascade="all, delete-orphan",
     )
+
 
 class ObservedComponent(Base):
     __tablename__ = "observed_components"
@@ -253,6 +283,7 @@ class ObservationMap(Base):
     map_key = Column(String(128), nullable=False)
     map_json = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False, default=utc_now)
+
     observation_run = relationship("ObservationRun", back_populates="observation_maps")
 
 
@@ -293,6 +324,11 @@ class ObservationDiff(Base):
     )
     link_diffs = relationship(
         "LinkDiff",
+        back_populates="observation_diff",
+        cascade="all, delete-orphan",
+    )
+    governor_checks = relationship(
+        "GovernorCheck",
         back_populates="observation_diff",
         cascade="all, delete-orphan",
     )
@@ -337,6 +373,7 @@ class ComponentDiff(Base):
 
     observation_diff = relationship("ObservationDiff", back_populates="component_diffs")
 
+
 class LinkDiff(Base):
     __tablename__ = "link_diffs"
 
@@ -353,3 +390,39 @@ class LinkDiff(Base):
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
     observation_diff = relationship("ObservationDiff", back_populates="link_diffs")
+
+
+class PolicyRule(Base):
+    __tablename__ = "policy_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rule_name = Column(String(255), nullable=False, unique=True)
+    rule_kind = Column(String(64), nullable=False)
+    severity = Column(String(32), nullable=False, default="info")
+    config_json = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    governor_checks = relationship(
+        "GovernorCheck",
+        back_populates="policy_rule",
+    )
+
+
+class GovernorCheck(Base):
+    __tablename__ = "governor_checks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    observation_diff_id = Column(Integer, ForeignKey("observation_diffs.id"), nullable=False, index=True)
+    scope_binding_id = Column(Integer, ForeignKey("scope_bindings.id"), nullable=False, index=True)
+    policy_rule_id = Column(Integer, ForeignKey("policy_rules.id"), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="completed")
+    decision = Column(String(32), nullable=False)
+    rationale = Column(Text, nullable=False)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="governor_checks")
+    observation_diff = relationship("ObservationDiff", back_populates="governor_checks")
+    scope_binding = relationship("ScopeBinding", back_populates="governor_checks")
+    policy_rule = relationship("PolicyRule", back_populates="governor_checks")
