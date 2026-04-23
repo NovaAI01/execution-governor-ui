@@ -3,12 +3,18 @@ import json
 from app.db import SessionLocal
 from app.models import (
     ArchitectureState,
+    ComponentDiff,
+    ComponentLink,
     DiffState,
+    FileDiff,
     GovernorCheck,
     GovernorState,
+    LinkDiff,
     ObservationDiff,
     ObservationMap,
     ObservationRun,
+    ObservedComponent,
+    ObservedFile,
     OverviewState,
     PolicyRule,
     Project,
@@ -65,6 +71,10 @@ def regenerate_read_models(project_id: int) -> dict:
         policy_rules = db.query(PolicyRule).order_by(PolicyRule.id.asc()).all()
 
         latest_checks = []
+        file_diffs = []
+        component_diffs = []
+        link_diffs = []
+
         if latest_diff:
             latest_checks = (
                 db.query(GovernorCheck)
@@ -72,13 +82,63 @@ def regenerate_read_models(project_id: int) -> dict:
                 .order_by(GovernorCheck.id.asc())
                 .all()
             )
+            file_diffs = (
+                db.query(FileDiff)
+                .filter(FileDiff.observation_diff_id == latest_diff.id)
+                .order_by(FileDiff.path.asc())
+                .limit(40)
+                .all()
+            )
+            component_diffs = (
+                db.query(ComponentDiff)
+                .filter(ComponentDiff.observation_diff_id == latest_diff.id)
+                .order_by(ComponentDiff.component_key.asc())
+                .limit(40)
+                .all()
+            )
+            link_diffs = (
+                db.query(LinkDiff)
+                .filter(LinkDiff.observation_diff_id == latest_diff.id)
+                .order_by(LinkDiff.link_key.asc())
+                .limit(40)
+                .all()
+            )
 
         architecture_maps = []
+        observed_files = []
+        observed_components = []
+        component_links = []
+
         if latest_run:
             architecture_maps = (
                 db.query(ObservationMap)
                 .filter(ObservationMap.observation_run_id == latest_run.id)
                 .order_by(ObservationMap.id.asc())
+                .all()
+            )
+            observed_files = (
+                db.query(ObservedFile)
+                .filter(ObservedFile.observation_run_id == latest_run.id)
+                .order_by(ObservedFile.path.asc())
+                .limit(40)
+                .all()
+            )
+            observed_components = (
+                db.query(ObservedComponent)
+                .filter(ObservedComponent.observation_run_id == latest_run.id)
+                .order_by(ObservedComponent.source_path.asc())
+                .limit(40)
+                .all()
+            )
+            component_links = (
+                db.query(ComponentLink, ObservedComponent.source_path)
+                .join(
+                    ObservedComponent,
+                    ComponentLink.source_component_id == ObservedComponent.id,
+                )
+                .filter(ComponentLink.observation_run_id == latest_run.id)
+                .order_by(ComponentLink.id.asc())
+                .limit(60)
                 .all()
             )
 
@@ -103,34 +163,78 @@ def regenerate_read_models(project_id: int) -> dict:
                     "excluded_file_count": latest_run.excluded_file_count,
                     "max_files_limit": latest_run.max_files_limit,
                     "failure_reason": latest_run.failure_reason,
+                    "root_path": latest_run.root_path,
                 }
                 if latest_run
                 else None
             ),
-            "latest_diff": (
+            "recent_events": [
                 {
-                    "id": latest_diff.id,
-                    "from_run_id": latest_diff.from_run_id,
-                    "to_run_id": latest_diff.to_run_id,
-                    "status": latest_diff.status,
-                    "file_diff_count": latest_diff.file_diff_count,
-                    "component_diff_count": latest_diff.component_diff_count,
-                    "link_diff_count": latest_diff.link_diff_count,
-                    "summary_json": _parse_json(latest_diff.summary_json, {}),
+                    "id": row.id,
+                    "event_type": row.event_type,
+                    "related_object_type": row.related_object_type,
+                    "related_object_id": row.related_object_id,
+                    "event_summary": row.event_summary,
+                    "event_payload_json": _parse_json(row.event_payload_json, {}),
+                    "created_at": str(row.created_at),
                 }
-                if latest_diff
-                else None
-            ),
-            "recent_event_count": len(recent_events),
-            "scope_binding_count": len(scope_bindings),
-            "policy_rule_count": len(policy_rules),
-            "governor_check_count": len(latest_checks),
+                for row in recent_events
+            ],
+            "scope_bindings": [
+                {
+                    "id": row.id,
+                    "binding_name": row.binding_name,
+                    "included_paths_json": _parse_json(row.included_paths_json, []),
+                    "excluded_paths_json": _parse_json(row.excluded_paths_json, []),
+                    "notes": row.notes,
+                }
+                for row in scope_bindings
+            ],
+            "policy_rules": [
+                {
+                    "id": row.id,
+                    "rule_name": row.rule_name,
+                    "rule_kind": row.rule_kind,
+                    "severity": row.severity,
+                    "config_json": _parse_json(row.config_json, {}),
+                }
+                for row in policy_rules
+            ],
         }
 
         architecture_payload = {
             "project_id": project_id,
             "latest_run_id": latest_run.id if latest_run else None,
-            "maps": [
+            "observed_files": [
+                {
+                    "path": row.path,
+                    "file_kind": row.file_kind,
+                    "size_bytes": row.size_bytes,
+                    "line_count": row.line_count,
+                    "sha256": row.sha256,
+                }
+                for row in observed_files
+            ],
+            "observed_components": [
+                {
+                    "component_key": row.component_key,
+                    "component_kind": row.component_kind,
+                    "layer": row.layer,
+                    "source_path": row.source_path,
+                    "metadata_json": _parse_json(row.metadata_json, {}),
+                }
+                for row in observed_components
+            ],
+            "component_links": [
+                {
+                    "source_path": source_path,
+                    "relation_type": link_row.relation_type,
+                    "target_path": link_row.target_path,
+                    "metadata_json": _parse_json(link_row.metadata_json, {}),
+                }
+                for link_row, source_path in component_links
+            ],
+            "observation_maps": [
                 {
                     "map_key": row.map_key,
                     "map_json": _parse_json(row.map_json, row.map_json),
@@ -155,7 +259,38 @@ def regenerate_read_models(project_id: int) -> dict:
                 if latest_diff
                 else None
             ),
+            "file_diffs": [
+                {
+                    "path": row.path,
+                    "diff_type": row.diff_type,
+                    "from_sha256": row.from_sha256,
+                    "to_sha256": row.to_sha256,
+                    "details_json": _parse_json(row.details_json, {}),
+                }
+                for row in file_diffs
+            ],
+            "component_diffs": [
+                {
+                    "component_key": row.component_key,
+                    "diff_type": row.diff_type,
+                    "from_component_kind": row.from_component_kind,
+                    "to_component_kind": row.to_component_kind,
+                    "details_json": _parse_json(row.details_json, {}),
+                }
+                for row in component_diffs
+            ],
+            "link_diffs": [
+                {
+                    "link_key": row.link_key,
+                    "diff_type": row.diff_type,
+                    "details_json": _parse_json(row.details_json, {}),
+                }
+                for row in link_diffs
+            ],
         }
+
+        policy_rule_name_by_id = {row.id: row.rule_name for row in policy_rules}
+        scope_binding_name_by_id = {row.id: row.binding_name for row in scope_bindings}
 
         governor_payload = {
             "project_id": project_id,
@@ -168,6 +303,8 @@ def regenerate_read_models(project_id: int) -> dict:
                     "rationale": row.rationale,
                     "policy_rule_id": row.policy_rule_id,
                     "scope_binding_id": row.scope_binding_id,
+                    "rule_name": policy_rule_name_by_id.get(row.policy_rule_id),
+                    "binding_name": scope_binding_name_by_id.get(row.scope_binding_id),
                     "details_json": _parse_json(row.details_json, {}),
                 }
                 for row in latest_checks
