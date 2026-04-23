@@ -1,9 +1,13 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.db import Base
+
+
+def utc_now():
+    return datetime.now(UTC)
 
 
 class Project(Base):
@@ -15,9 +19,18 @@ class Project(Base):
     excluded_scope = Column(Text, nullable=False)
     completion_contract = Column(Text, nullable=False)
     root_path = Column(Text, nullable=True)
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, nullable=False, default=utc_now)
 
-    capabilities = relationship("Capability", back_populates="project", cascade="all, delete-orphan")
+    capabilities = relationship(
+        "Capability",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
+    observation_runs = relationship(
+        "ObservationRun",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Capability(Base):
@@ -29,10 +42,14 @@ class Capability(Base):
     outcome = Column(Text, nullable=False)
     acceptance_criteria = Column(Text, nullable=False)
     status = Column(String(32), nullable=False, default="draft")
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, nullable=False, default=utc_now)
 
     project = relationship("Project", back_populates="capabilities")
-    mandates = relationship("Mandate", back_populates="capability", cascade="all, delete-orphan")
+    mandates = relationship(
+        "Mandate",
+        back_populates="capability",
+        cascade="all, delete-orphan",
+    )
 
 
 class Mandate(Base):
@@ -45,7 +62,7 @@ class Mandate(Base):
     work_items_json = Column(Text, nullable=False)
     evidence_summary = Column(Text, nullable=False)
     status = Column(String(32), nullable=False, default="draft")
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, nullable=False, default=utc_now)
 
     capability = relationship("Capability", back_populates="mandates")
 
@@ -55,7 +72,7 @@ class WorkLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
-    ts = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    ts = Column(DateTime, nullable=False, default=utc_now)
     source = Column(String(64), nullable=False, default="manual")
     command_text = Column(Text, nullable=False)
     notes = Column(Text, nullable=True)
@@ -63,27 +80,158 @@ class WorkLog(Base):
     project = relationship("Project")
 
 
-class FileTreeEntry(Base):
-    __tablename__ = "file_tree_entries"
+class ObservationRun(Base):
+    __tablename__ = "observation_runs"
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
-    path = Column(Text, nullable=False)
-    entry_type = Column(String(16), nullable=False)
-    sha256 = Column(String(64), nullable=True)
-    last_seen_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    root_path = Column(Text, nullable=False)
+    status = Column(String(32), nullable=False, default="running")
+    file_count = Column(Integer, nullable=False, default=0)
+    component_count = Column(Integer, nullable=False, default=0)
+    link_count = Column(Integer, nullable=False, default=0)
+    started_at = Column(DateTime, nullable=False, default=utc_now)
+    completed_at = Column(DateTime, nullable=True)
 
-    project = relationship("Project")
+    project = relationship("Project", back_populates="observation_runs")
+    observed_files = relationship(
+        "ObservedFile",
+        back_populates="observation_run",
+        cascade="all, delete-orphan",
+    )
+    observed_components = relationship(
+        "ObservedComponent",
+        back_populates="observation_run",
+        cascade="all, delete-orphan",
+    )
+    component_links = relationship(
+        "ComponentLink",
+        back_populates="observation_run",
+        cascade="all, delete-orphan",
+    )
+    observation_maps = relationship(
+        "ObservationMap",
+        back_populates="observation_run",
+        cascade="all, delete-orphan",
+    )
 
 
-class FileSnapshot(Base):
-    __tablename__ = "file_snapshots"
+class ObservedFile(Base):
+    __tablename__ = "observed_files"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    observation_run_id = Column(
+        Integer,
+        ForeignKey("observation_runs.id"),
+        nullable=False,
+        index=True,
+    )
     path = Column(Text, nullable=False)
+    file_kind = Column(String(64), nullable=False)
     sha256 = Column(String(64), nullable=False)
-    content_text = Column(Text, nullable=False)
-    captured_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    size_bytes = Column(Integer, nullable=False, default=0)
+    line_count = Column(Integer, nullable=True)
+    content_text = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
 
-    project = relationship("Project")
+    observation_run = relationship("ObservationRun", back_populates="observed_files")
+    observed_components = relationship(
+        "ObservedComponent",
+        back_populates="observed_file",
+        cascade="all, delete-orphan",
+    )
+
+
+class ObservedComponent(Base):
+    __tablename__ = "observed_components"
+
+    id = Column(Integer, primary_key=True, index=True)
+    observation_run_id = Column(
+        Integer,
+        ForeignKey("observation_runs.id"),
+        nullable=False,
+        index=True,
+    )
+    observed_file_id = Column(
+        Integer,
+        ForeignKey("observed_files.id"),
+        nullable=False,
+        index=True,
+    )
+    component_key = Column(String(255), nullable=False, index=True)
+    component_kind = Column(String(64), nullable=False)
+    display_name = Column(String(255), nullable=False)
+    source_path = Column(Text, nullable=False)
+    layer = Column(String(64), nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    observation_run = relationship("ObservationRun", back_populates="observed_components")
+    observed_file = relationship("ObservedFile", back_populates="observed_components")
+    links_from = relationship(
+        "ComponentLink",
+        back_populates="source_component",
+        foreign_keys="ComponentLink.source_component_id",
+        cascade="all, delete-orphan",
+    )
+    links_to = relationship(
+        "ComponentLink",
+        back_populates="target_component",
+        foreign_keys="ComponentLink.target_component_id",
+    )
+
+class ComponentLink(Base):
+    __tablename__ = "component_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    observation_run_id = Column(
+        Integer,
+        ForeignKey("observation_runs.id"),
+        nullable=False,
+        index=True,
+    )
+    source_component_id = Column(
+        Integer,
+        ForeignKey("observed_components.id"),
+        nullable=False,
+        index=True,
+    )
+    target_component_id = Column(
+        Integer,
+        ForeignKey("observed_components.id"),
+        nullable=True,
+        index=True,
+    )
+    relation_type = Column(String(64), nullable=False)
+    target_path = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    observation_run = relationship("ObservationRun", back_populates="component_links")
+    source_component = relationship(
+        "ObservedComponent",
+        back_populates="links_from",
+        foreign_keys=[source_component_id],
+    )
+    target_component = relationship(
+        "ObservedComponent",
+        back_populates="links_to",
+        foreign_keys=[target_component_id],
+    )
+
+
+class ObservationMap(Base):
+    __tablename__ = "observation_maps"
+
+    id = Column(Integer, primary_key=True, index=True)
+    observation_run_id = Column(
+        Integer,
+        ForeignKey("observation_runs.id"),
+        nullable=False,
+        index=True,
+    )
+    map_key = Column(String(128), nullable=False)
+    map_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    observation_run = relationship("ObservationRun", back_populates="observation_maps")
