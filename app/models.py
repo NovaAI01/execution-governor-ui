@@ -31,6 +31,11 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    observation_diffs = relationship(
+        "ObservationDiff",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Capability(Base):
@@ -82,7 +87,6 @@ class WorkLog(Base):
 
 class ObservationRun(Base):
     __tablename__ = "observation_runs"
-
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
     root_path = Column(Text, nullable=False)
@@ -119,6 +123,17 @@ class ObservationRun(Base):
         back_populates="observation_run",
         cascade="all, delete-orphan",
     )
+    outgoing_diffs = relationship(
+        "ObservationDiff",
+        back_populates="from_run",
+        cascade="all, delete-orphan",
+        foreign_keys="ObservationDiff.from_run_id",
+    )
+    incoming_diffs = relationship(
+        "ObservationDiff",
+        back_populates="to_run",
+        foreign_keys="ObservationDiff.to_run_id",
+    )
 
 
 class ObservedFile(Base):
@@ -146,7 +161,6 @@ class ObservedFile(Base):
         cascade="all, delete-orphan",
     )
 
-
 class ObservedComponent(Base):
     __tablename__ = "observed_components"
 
@@ -170,6 +184,7 @@ class ObservedComponent(Base):
     layer = Column(String(64), nullable=True)
     metadata_json = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=utc_now)
+
     observation_run = relationship("ObservationRun", back_populates="observed_components")
     observed_file = relationship("ObservedFile", back_populates="observed_components")
     links_from = relationship(
@@ -238,5 +253,103 @@ class ObservationMap(Base):
     map_key = Column(String(128), nullable=False)
     map_json = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False, default=utc_now)
-
     observation_run = relationship("ObservationRun", back_populates="observation_maps")
+
+
+class ObservationDiff(Base):
+    __tablename__ = "observation_diffs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    from_run_id = Column(Integer, ForeignKey("observation_runs.id"), nullable=False, index=True)
+    to_run_id = Column(Integer, ForeignKey("observation_runs.id"), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="completed")
+    file_diff_count = Column(Integer, nullable=False, default=0)
+    component_diff_count = Column(Integer, nullable=False, default=0)
+    link_diff_count = Column(Integer, nullable=False, default=0)
+    summary_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="observation_diffs")
+    from_run = relationship(
+        "ObservationRun",
+        back_populates="outgoing_diffs",
+        foreign_keys=[from_run_id],
+    )
+    to_run = relationship(
+        "ObservationRun",
+        back_populates="incoming_diffs",
+        foreign_keys=[to_run_id],
+    )
+    file_diffs = relationship(
+        "FileDiff",
+        back_populates="observation_diff",
+        cascade="all, delete-orphan",
+    )
+    component_diffs = relationship(
+        "ComponentDiff",
+        back_populates="observation_diff",
+        cascade="all, delete-orphan",
+    )
+    link_diffs = relationship(
+        "LinkDiff",
+        back_populates="observation_diff",
+        cascade="all, delete-orphan",
+    )
+
+
+class FileDiff(Base):
+    __tablename__ = "file_diffs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    observation_diff_id = Column(
+        Integer,
+        ForeignKey("observation_diffs.id"),
+        nullable=False,
+        index=True,
+    )
+    path = Column(Text, nullable=False, index=True)
+    diff_type = Column(String(32), nullable=False)
+    from_sha256 = Column(String(64), nullable=True)
+    to_sha256 = Column(String(64), nullable=True)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    observation_diff = relationship("ObservationDiff", back_populates="file_diffs")
+
+
+class ComponentDiff(Base):
+    __tablename__ = "component_diffs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    observation_diff_id = Column(
+        Integer,
+        ForeignKey("observation_diffs.id"),
+        nullable=False,
+        index=True,
+    )
+    component_key = Column(String(255), nullable=False, index=True)
+    diff_type = Column(String(32), nullable=False)
+    from_component_kind = Column(String(64), nullable=True)
+    to_component_kind = Column(String(64), nullable=True)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    observation_diff = relationship("ObservationDiff", back_populates="component_diffs")
+
+class LinkDiff(Base):
+    __tablename__ = "link_diffs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    observation_diff_id = Column(
+        Integer,
+        ForeignKey("observation_diffs.id"),
+        nullable=False,
+        index=True,
+    )
+    link_key = Column(Text, nullable=False, index=True)
+    diff_type = Column(String(32), nullable=False)
+    details_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    observation_diff = relationship("ObservationDiff", back_populates="link_diffs")

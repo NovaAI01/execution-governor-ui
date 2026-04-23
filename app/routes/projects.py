@@ -7,14 +7,19 @@ from app.db import SessionLocal
 from app.models import (
     Capability,
     ComponentLink,
+    FileDiff,
+    LinkDiff,
     Mandate,
+    ObservationDiff,
     ObservationMap,
     ObservationRun,
     ObservedComponent,
     ObservedFile,
     Project,
     WorkLog,
+    ComponentDiff,
 )
+from app.services.comparison_core import compare_observation_runs
 from app.services.observation_spine import capture_observation_run
 
 router = APIRouter()
@@ -141,10 +146,20 @@ def project_overview(request: Request, project_id: int):
             .first()
         )
 
+        latest_diff = (
+            db.query(ObservationDiff)
+            .filter(ObservationDiff.project_id == project_id)
+            .order_by(ObservationDiff.id.desc())
+            .first()
+        )
+
         observed_files = []
         observed_components = []
         component_links = []
         observation_maps = []
+        file_diffs = []
+        component_diffs = []
+        link_diffs = []
 
         if latest_run:
             observed_file_rows = (
@@ -221,6 +236,58 @@ def project_overview(request: Request, project_id: int):
                 }
                 for row in observation_map_rows
             ]
+
+        if latest_diff:
+            file_diff_rows = (
+                db.query(FileDiff)
+                .filter(FileDiff.observation_diff_id == latest_diff.id)
+                .order_by(FileDiff.path.asc())
+                .limit(40)
+                .all()
+            )
+            component_diff_rows = (
+                db.query(ComponentDiff)
+                .filter(ComponentDiff.observation_diff_id == latest_diff.id)
+                .order_by(ComponentDiff.component_key.asc())
+                .limit(40)
+                .all()
+            )
+            link_diff_rows = (
+                db.query(LinkDiff)
+                .filter(LinkDiff.observation_diff_id == latest_diff.id)
+                .order_by(LinkDiff.link_key.asc())
+                .limit(40)
+                .all()
+            )
+
+            file_diffs = [
+                {
+                    "path": row.path,
+                    "diff_type": row.diff_type,
+                    "from_sha256": row.from_sha256,
+                    "to_sha256": row.to_sha256,
+                    "details_json": parse_json_text(row.details_json),
+                }
+                for row in file_diff_rows
+            ]
+            component_diffs = [
+                {
+                    "component_key": row.component_key,
+                    "diff_type": row.diff_type,
+                    "from_component_kind": row.from_component_kind,
+                    "to_component_kind": row.to_component_kind,
+                    "details_json": parse_json_text(row.details_json),
+                }
+                for row in component_diff_rows
+            ]
+            link_diffs = [
+                {
+                    "link_key": row.link_key,
+                    "diff_type": row.diff_type,
+                    "details_json": parse_json_text(row.details_json),
+                }
+                for row in link_diff_rows
+            ]
     finally:
         db.close()
 
@@ -235,10 +302,14 @@ def project_overview(request: Request, project_id: int):
             "work_items": work_items,
             "recent_logs": recent_logs,
             "latest_run": latest_run,
+            "latest_diff": latest_diff,
             "observed_files": observed_files,
             "observed_components": observed_components,
             "component_links": component_links,
             "observation_maps": observation_maps,
+            "file_diffs": file_diffs,
+            "component_diffs": component_diffs,
+            "link_diffs": link_diffs,
         },
     )
 
@@ -258,6 +329,37 @@ def observe_project(project_id: int):
         capture_observation_run(project.id, project.root_path)
     finally:
         db.close()
+
+    return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
+
+
+@router.post("/projects/{project_id}/compare-latest")
+def compare_latest_runs(project_id: int):
+    db = SessionLocal()
+    try:
+        project = get_project_or_none(db, project_id)
+        if not project:
+            return RedirectResponse(url="/projects", status_code=303)
+
+        runs = (
+            db.query(ObservationRun)
+            .filter(ObservationRun.project_id == project_id, ObservationRun.status == "completed")
+            .order_by(ObservationRun.id.desc())
+            .limit(2)
+            .all()
+        )
+    finally:
+        db.close()
+
+    if len(runs) < 2:
+        return RedirectResponse(
+            url=f"/projects/{project_id}?error=not-enough-runs-to-compare",
+            status_code=303,
+        )
+
+    newest = runs[0]
+    previous = runs[1]
+    compare_observation_runs(project_id, previous.id, newest.id)
 
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 

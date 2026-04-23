@@ -14,6 +14,9 @@
             <form method="post" action="/projects/{{ project.id }}/observe">
                 <button type="submit">Run Observation</button>
             </form>
+            <form method="post" action="/projects/{{ project.id }}/compare-latest">
+                <button type="submit">Compare Latest Runs</button>
+            </form>
         </div>
     </div>
 
@@ -136,6 +139,48 @@
 </section>
 
 <section class="card">
+    <h2>Latest Observation Diff</h2>
+    {% if latest_diff %}
+        <div class="grid-two">
+            <div class="detail-block">
+                <div class="detail-label">Diff ID</div>
+                <div class="detail-value">{{ latest_diff.id }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">From Run</div>
+                <div class="detail-value">{{ latest_diff.from_run_id }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">To Run</div>
+                <div class="detail-value">{{ latest_diff.to_run_id }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Status</div>
+                <div class="detail-value">{{ latest_diff.status }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">File Diffs</div>
+                <div class="detail-value">{{ latest_diff.file_diff_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Component Diffs</div>
+                <div class="detail-value">{{ latest_diff.component_diff_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Link Diffs</div>
+                <div class="detail-value">{{ latest_diff.link_diff_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Summary</div>
+                <div class="detail-value preserve">{{ latest_diff.summary_json or "-" }}</div>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state">No observation diff yet.</div>
+    {% endif %}
+</section>
+
+<section class="card">
     <h2>Observed Files</h2>
     {% if observed_files %}
         <table>
@@ -224,6 +269,86 @@
         </table>
     {% else %}
         <div class="empty-state">No component links.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>File Diffs</h2>
+    {% if file_diffs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Path</th>
+                    <th>Type</th>
+                    <th>From SHA</th>
+                    <th>To SHA</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in file_diffs %}
+                    <tr>
+                        <td><code>{{ row.path }}</code></td>
+                        <td>{{ row.diff_type }}</td>
+                        <td><code>{{ row.from_sha256[:16] ~ '...' if row.from_sha256 else '-' }}</code></td>
+                        <td><code>{{ row.to_sha256[:16] ~ '...' if row.to_sha256 else '-' }}</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No file diffs.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Component Diffs</h2>
+    {% if component_diffs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Component Key</th>
+                    <th>Type</th>
+                    <th>From Kind</th>
+                    <th>To Kind</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in component_diffs %}
+                    <tr>
+                        <td><code>{{ row.component_key }}</code></td>
+                        <td>{{ row.diff_type }}</td>
+                        <td>{{ row.from_component_kind or "-" }}</td>
+                        <td>{{ row.to_component_kind or "-" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No component diffs.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Link Diffs</h2>
+    {% if link_diffs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Link Key</th>
+                    <th>Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in link_diffs %}
+                    <tr>
+                        <td><code>{{ row.link_key }}</code></td>
+                        <td>{{ row.diff_type }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No link diffs.</div>
     {% endif %}
 </section>
 
