@@ -53,32 +53,84 @@ def ensure_default_scope_binding(project_id: int, root_path: str | None) -> Scop
 def ensure_default_policy_rules() -> list[PolicyRule]:
     db = SessionLocal()
     try:
-        existing = db.query(PolicyRule).order_by(PolicyRule.id.asc()).all()
-        if existing:
-            return existing
+        existing = {
+            row.rule_name: row
+            for row in db.query(PolicyRule).order_by(PolicyRule.id.asc()).all()
+        }
 
-        rows = [
-            PolicyRule(
-                rule_name="no_removed_files",
-                rule_kind="file_diff",
-                severity="warn",
-                config_json=json.dumps({"blocked_diff_types": ["removed"]}, sort_keys=True),
-            ),
-            PolicyRule(
-                rule_name="no_removed_components",
-                rule_kind="component_diff",
-                severity="warn",
-                config_json=json.dumps({"blocked_diff_types": ["removed"]}, sort_keys=True),
-            ),
-            PolicyRule(
-                rule_name="no_removed_links",
-                rule_kind="link_diff",
-                severity="info",
-                config_json=json.dumps({"blocked_diff_types": ["removed"]}, sort_keys=True),
-            ),
+        defaults = [
+            {
+                "rule_name": "no_removed_files",
+                "rule_kind": "file_diff",
+                "severity": "warn",
+                "config_json": {"blocked_diff_types": ["removed"]},
+            },
+            {
+                "rule_name": "no_removed_components",
+                "rule_kind": "component_diff",
+                "severity": "warn",
+                "config_json": {"blocked_diff_types": ["removed"]},
+            },
+            {
+                "rule_name": "no_removed_links",
+                "rule_kind": "link_diff",
+                "severity": "info",
+                "config_json": {"blocked_diff_types": ["removed"]},
+            },
+            {
+                "rule_name": "out_of_scope_file_changes",
+                "rule_kind": "file_scope",
+                "severity": "warn",
+                "config_json": {"trigger_scope_results": ["OUT_OF_SCOPE", "PARTIAL_SCOPE"]},
+            },
+            {
+                "rule_name": "out_of_scope_component_changes",
+                "rule_kind": "component_scope",
+                "severity": "warn",
+                "config_json": {"trigger_scope_results": ["OUT_OF_SCOPE", "PARTIAL_SCOPE"]},
+            },
+            {
+                "rule_name": "out_of_scope_link_changes",
+                "rule_kind": "link_scope",
+                "severity": "info",
+                "config_json": {"trigger_scope_results": ["OUT_OF_SCOPE", "PARTIAL_SCOPE"]},
+            },
         ]
-        db.add_all(rows)
-        db.commit()
+
+        created = False
+
+        for spec in defaults:
+            row = existing.get(spec["rule_name"])
+            if row is None:
+                db.add(
+                    PolicyRule(
+                        rule_name=spec["rule_name"],
+                        rule_kind=spec["rule_kind"],
+                        severity=spec["severity"],
+                        config_json=json.dumps(spec["config_json"], sort_keys=True),
+                    )
+                )
+                created = True
+            else:
+                changed = False
+                if row.rule_kind != spec["rule_kind"]:
+                    row.rule_kind = spec["rule_kind"]
+                    changed = True
+                if row.severity != spec["severity"]:
+                    row.severity = spec["severity"]
+                    changed = True
+
+                desired_config = json.dumps(spec["config_json"], sort_keys=True)
+                if row.config_json != desired_config:
+                    row.config_json = desired_config
+                    changed = True
+
+                if changed:
+                    created = True
+
+        if created:
+            db.commit()
+
         return db.query(PolicyRule).order_by(PolicyRule.id.asc()).all()
     finally:
         db.close()
@@ -253,6 +305,28 @@ def _build_link_item(row, scope_info: dict) -> dict:
     }
 
 
+def _decision_for_rule(severity: str | None, matched_items: list[dict]) -> str:
+    if not matched_items:
+        return "pass"
+
+    level = (severity or "").lower()
+
+    if level in {"fail", "error", "block", "critical"}:
+        return "fail"
+    if level == "info":
+        return "info"
+    return "warn"
+
+
+def _rationale_for_rule(rule_name: str, decision: str, matched_items: list[dict], matched_label: str) -> str:
+    if not matched_items:
+        return f"Rule {rule_name} passed. No {matched_label} were found."
+    return (
+        f"Rule {rule_name} triggered. "
+        f"{len(matched_items)} {matched_label} matched rule conditions."
+    )
+
+
 def run_judgment_for_latest_diff(project_id: int) -> dict:
     db = SessionLocal()
     try:
@@ -318,55 +392,75 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
 
         for rule in policy_rules:
             config = _parse_json(rule.config_json, {})
-            blocked_types = config.get("blocked_diff_types", ["removed"])
-
             classified_items = []
-            scoped_items = []
+            matched_items = []
+            matched_label = "matching items"
 
             if rule.rule_kind == "file_diff":
+                blocked_types = config.get("blocked_diff_types", ["removed"])
+                matched_label = "in-scope or partially in-scope file diffs"
                 for row in file_diffs:
                     scope_info = _classify_file_diff(row, included_paths, excluded_paths, repo_roots)
                     item = _build_file_item(row, scope_info)
                     classified_items.append(item)
-                    if scope_info["scope_result"] != "OUT_OF_SCOPE":
-                        scoped_items.append(item)
+                    if item["scope_result"] != "OUT_OF_SCOPE" and item["diff_type"] in blocked_types:
+                        matched_items.append(item)
 
             elif rule.rule_kind == "component_diff":
+                blocked_types = config.get("blocked_diff_types", ["removed"])
+                matched_label = "in-scope or partially in-scope component diffs"
                 for row in component_diffs:
                     scope_info = _classify_component_diff(row, included_paths, excluded_paths, repo_roots)
                     item = _build_component_item(row, scope_info)
                     classified_items.append(item)
-                    if scope_info["scope_result"] != "OUT_OF_SCOPE":
-                        scoped_items.append(item)
+                    if item["scope_result"] != "OUT_OF_SCOPE" and item["diff_type"] in blocked_types:
+                        matched_items.append(item)
 
             elif rule.rule_kind == "link_diff":
+                blocked_types = config.get("blocked_diff_types", ["removed"])
+                matched_label = "in-scope or partially in-scope link diffs"
                 for row in link_diffs:
                     scope_info = _classify_link_diff(row, included_paths, excluded_paths, repo_roots)
                     item = _build_link_item(row, scope_info)
                     classified_items.append(item)
-                    if scope_info["scope_result"] != "OUT_OF_SCOPE":
-                        scoped_items.append(item)
+                    if item["scope_result"] != "OUT_OF_SCOPE" and item["diff_type"] in blocked_types:
+                        matched_items.append(item)
+
+            elif rule.rule_kind == "file_scope":
+                trigger_scope_results = config.get("trigger_scope_results", ["OUT_OF_SCOPE", "PARTIAL_SCOPE"])
+                matched_label = "file diffs outside allowed scope"
+                for row in file_diffs:
+                    scope_info = _classify_file_diff(row, included_paths, excluded_paths, repo_roots)
+                    item = _build_file_item(row, scope_info)
+                    classified_items.append(item)
+                    if item["scope_result"] in trigger_scope_results:
+                        matched_items.append(item)
+
+            elif rule.rule_kind == "component_scope":
+                trigger_scope_results = config.get("trigger_scope_results", ["OUT_OF_SCOPE", "PARTIAL_SCOPE"])
+                matched_label = "component diffs outside allowed scope"
+                for row in component_diffs:
+                    scope_info = _classify_component_diff(row, included_paths, excluded_paths, repo_roots)
+                    item = _build_component_item(row, scope_info)
+                    classified_items.append(item)
+                    if item["scope_result"] in trigger_scope_results:
+                        matched_items.append(item)
+
+            elif rule.rule_kind == "link_scope":
+                trigger_scope_results = config.get("trigger_scope_results", ["OUT_OF_SCOPE", "PARTIAL_SCOPE"])
+                matched_label = "link diffs outside allowed scope"
+                for row in link_diffs:
+                    scope_info = _classify_link_diff(row, included_paths, excluded_paths, repo_roots)
+                    item = _build_link_item(row, scope_info)
+                    classified_items.append(item)
+                    if item["scope_result"] in trigger_scope_results:
+                        matched_items.append(item)
+
             else:
                 continue
 
-            considered = [item["diff_type"] for item in scoped_items]
-            violations = [
-                item for item in scoped_items
-                if item["diff_type"] in blocked_types
-            ]
-
-            if violations:
-                decision = "fail"
-                rationale = (
-                    f"Rule {rule.rule_name} failed. "
-                    f"{len(violations)} in-scope or partially in-scope diff(s) matched blocked types."
-                )
-            else:
-                decision = "pass"
-                rationale = (
-                    f"Rule {rule.rule_name} passed. "
-                    f"No in-scope or partially in-scope diffs matched blocked types."
-                )
+            decision = _decision_for_rule(rule.severity, matched_items)
+            rationale = _rationale_for_rule(rule.rule_name, decision, matched_items, matched_label)
 
             check = GovernorCheck(
                 project_id=project_id,
@@ -378,12 +472,14 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
                 rationale=rationale,
                 details_json=json.dumps(
                     {
-                        "blocked_diff_types": blocked_types,
+                        "rule_name": rule.rule_name,
+                        "rule_kind": rule.rule_kind,
+                        "severity": rule.severity,
+                        "config": config,
                         "included_paths": included_paths,
                         "excluded_paths": excluded_paths,
                         "classified_items": classified_items,
-                        "considered_diff_types": considered,
-                        "violations": violations,
+                        "matched_items": matched_items,
                     },
                     sort_keys=True,
                 ),
