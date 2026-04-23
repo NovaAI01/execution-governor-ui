@@ -1,75 +1,252 @@
 {% extends "base.html" %}
 
 {% block content %}
-{% include "partials/overview_header.html" %}
-{% include "partials/overview_metrics.html" %}
+<section class="card">
+    <div class="list-row">
+        <div>
+            <h2>{{ project.name }}</h2>
+            <div class="item-meta">{{ project.root_path or "No root path set" }}</div>
+        </div>
+        <div class="inline-actions">
+            <a class="button-small link-button" href="/projects/{{ project.id }}/setup">Setup</a>
+            <a class="button-small link-button" href="/projects/{{ project.id }}/capabilities">Capabilities</a>
+            <a class="button-small link-button" href="/projects/{{ project.id }}/mandates">Mandates</a>
+            <form method="post" action="/projects/{{ project.id }}/observe">
+                <button type="submit">Run Observation</button>
+            </form>
+        </div>
+    </div>
 
-<section class="workspace-layout">
-    <aside class="workspace-sidebar card">
-        {% include "partials/working_tree_panel.html" %}
-    </aside>
+    <div class="detail-block">
+        <div class="detail-label">Product Idea</div>
+        <div class="detail-value preserve">{{ project.product_idea }}</div>
+    </div>
 
-    <div class="workspace-main">
-        <section class="card" id="file-preview-panel">
-            {% include "partials/file_preview_panel.html" %}
-        </section>
+    <div class="detail-block">
+        <div class="detail-label">Excluded Scope</div>
+        <div class="detail-value preserve">{{ project.excluded_scope }}</div>
+    </div>
 
-        <section class="grid-two">
-            <div class="card">
-                {% include "partials/project_summary_panel.html" %}
-            </div>
-
-            <div class="card">
-                {% include "partials/active_capability_panel.html" %}
-            </div>
-        </section>
-
-        <section class="grid-two">
-            <div class="card">
-                {% include "partials/active_mandate_panel.html" %}
-            </div>
-
-            <div class="card">
-                {% include "partials/work_items_panel.html" %}
-            </div>
-        </section>
-
-        <section class="card">
-            {% include "partials/completed_mandates_panel.html" %}
-        </section>
-
-        <section class="card">
-            {% include "partials/work_log_panel.html" %}
-        </section>
+    <div class="detail-block">
+        <div class="detail-label">Completion Contract</div>
+        <div class="detail-value preserve">{{ project.completion_contract }}</div>
     </div>
 </section>
 
-<script>
-document.addEventListener("click", async function (event) {
-    const link = event.target.closest("[data-file-preview-link]");
-    if (!link) return;
+<section class="grid-two">
+    <div class="card">
+        <h2>Active Capability</h2>
+        {% if active_capability %}
+            <div class="detail-block">
+                <div class="detail-label">Title</div>
+                <div class="detail-value">{{ active_capability.title }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Outcome</div>
+                <div class="detail-value preserve">{{ active_capability.outcome }}</div>
+            </div>
+        {% else %}
+            <div class="empty-state">No active capability.</div>
+        {% endif %}
+    </div>
 
-    event.preventDefault();
+    <div class="card">
+        <h2>Active Mandate</h2>
+        {% if active_mandate %}
+            <div class="detail-block">
+                <div class="detail-label">Title</div>
+                <div class="detail-value">{{ active_mandate.title }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Objective</div>
+                <div class="detail-value preserve">{{ active_mandate.objective }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Work Items</div>
+                <div class="detail-value">
+                    {% if work_items %}
+                        <ul>
+                            {% for item in work_items %}
+                                <li>{{ item }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        None
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <div class="empty-state">No active mandate.</div>
+        {% endif %}
+    </div>
+</section>
 
-    try {
-        const response = await fetch(link.href, {
-            headers: { "X-Requested-With": "fetch" }
-        });
-        if (!response.ok) return;
+<section class="card">
+    <h2>Latest Observation Run</h2>
+    {% if latest_run %}
+        <div class="grid-two">
+            <div class="detail-block">
+                <div class="detail-label">Run ID</div>
+                <div class="detail-value">{{ latest_run.id }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Status</div>
+                <div class="detail-value">{{ latest_run.status }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Files</div>
+                <div class="detail-value">{{ latest_run.file_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Components</div>
+                <div class="detail-value">{{ latest_run.component_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Links</div>
+                <div class="detail-value">{{ latest_run.link_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Root Path</div>
+                <div class="detail-value preserve">{{ latest_run.root_path }}</div>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state">No observation run yet.</div>
+    {% endif %}
+</section>
 
-        const html = await response.text();
-        const panel = document.getElementById("file-preview-panel");
-        if (panel) {
-            panel.innerHTML = html;
-        }
+<section class="card">
+    <h2>Observed Files</h2>
+    {% if observed_files %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Path</th>
+                    <th>Kind</th>
+                    <th>Bytes</th>
+                    <th>Lines</th>
+                    <th>SHA256</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in observed_files %}
+                    <tr>
+                        <td><code>{{ row.path }}</code></td>
+                        <td>{{ row.file_kind }}</td>
+                        <td>{{ row.size_bytes }}</td>
+                        <td>{{ row.line_count or "-" }}</td>
+                        <td><code>{{ row.sha256[:16] }}...</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No observed files.</div>
+    {% endif %}
+</section>
 
-        document.querySelectorAll("[data-file-preview-link]").forEach((el) => {
-            el.classList.remove("selected-file");
-        });
-        link.classList.add("selected-file");
-    } catch (err) {
-        console.error(err);
-    }
-});
-</script>
+<section class="card">
+    <h2>Observed Components</h2>
+    {% if observed_components %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Kind</th>
+                    <th>Layer</th>
+                    <th>Source Path</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in observed_components %}
+                    <tr>
+                        <td><code>{{ row.component_key }}</code></td>
+                        <td>{{ row.component_kind }}</td>
+                        <td>{{ row.layer or "-" }}</td>
+                        <td><code>{{ row.source_path }}</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No observed components.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Component Links</h2>
+    {% if component_links %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Source</th>
+                    <th>Relation</th>
+                    <th>Target</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in component_links %}
+                    <tr>
+                        <td><code>{{ row.source_path }}</code></td>
+                        <td>{{ row.relation_type }}</td>
+                        <td><code>{{ row.target_path or "-" }}</code></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No component links.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Observation Maps</h2>
+    {% if observation_maps %}
+        {% for row in observation_maps %}
+            <div class="detail-block">
+                <div class="detail-label">{{ row.map_key }}</div>
+                <pre class="preserve">{{ row.map_json }}</pre>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">No observation maps.</div>
+    {% endif %}
+</section>
+
+<section class="card">
+    <h2>Recent Work Log</h2>
+    <form class="form-grid" method="post" action="/projects/{{ project.id }}/work-log">
+        <label>
+            <span>Command Text</span>
+            <textarea name="command_text" rows="4" required></textarea>
+        </label>
+        <label>
+            <span>Notes</span>
+            <textarea name="notes" rows="3"></textarea>
+        </label>
+        <div class="actions">
+            <button type="submit">Add Log Entry</button>
+        </div>
+    </form>
+
+    {% if recent_logs %}
+        <div class="stack-list">
+            {% for row in recent_logs %}
+                <div class="list-item">
+                    <div class="item-meta">{{ row.ts }}</div>
+                    <div class="detail-block">
+                        <div class="detail-label">Command</div>
+                        <div class="detail-value preserve">{{ row.command_text }}</div>
+                    </div>
+                    <div class="detail-block">
+                        <div class="detail-label">Notes</div>
+                        <div class="detail-value preserve">{{ row.notes or "-" }}</div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">No work log entries.</div>
+    {% endif %}
+</section>
 {% endblock %}

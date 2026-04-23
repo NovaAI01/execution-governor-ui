@@ -1,11 +1,21 @@
+import json
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import SessionLocal
-from app.models import Capability, FileSnapshot, FileTreeEntry, Mandate, Project, WorkLog
-from app.services.file_snapshot import capture_tree_snapshot
-from app.services.file_tree import read_project_file, scan_project_tree
-from app.services.code_graph import build_code_graph
+from app.models import (
+    Capability,
+    ComponentLink,
+    Mandate,
+    ObservationMap,
+    ObservationRun,
+    ObservedComponent,
+    ObservedFile,
+    Project,
+    WorkLog,
+)
+from app.services.observation_spine import capture_observation_run
 
 router = APIRouter()
 
@@ -34,8 +44,6 @@ def get_active_mandate_for_project(db, project_id: int):
 
 
 def parse_work_items(raw: str) -> list[str]:
-    import json
-
     text = raw.strip()
     if not text:
         return []
@@ -48,6 +56,15 @@ def parse_work_items(raw: str) -> list[str]:
         pass
 
     return [line.strip("-• ").strip() for line in text.splitlines() if line.strip()]
+
+
+def parse_json_text(raw: str | None):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -96,8 +113,9 @@ def create_project(
 
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
+
 @router.get("/projects/{project_id}", response_class=HTMLResponse)
-def project_overview(request: Request, project_id: int, file_path: str | None = None):
+def project_overview(request: Request, project_id: int):
     db = SessionLocal()
     try:
         project = get_project_or_none(db, project_id)
@@ -108,14 +126,6 @@ def project_overview(request: Request, project_id: int, file_path: str | None = 
         active_mandate = get_active_mandate_for_project(db, project_id)
         work_items = parse_work_items(active_mandate.work_items_json) if active_mandate else []
 
-        completed_mandates_raw = (
-            db.query(Mandate)
-            .join(Capability, Mandate.capability_id == Capability.id)
-            .filter(Capability.project_id == project_id, Mandate.status == "completed")
-            .order_by(Mandate.created_at.desc(), Mandate.id.desc())
-            .all()
-        )
-
         recent_logs = (
             db.query(WorkLog)
             .filter(WorkLog.project_id == project_id)
@@ -124,38 +134,91 @@ def project_overview(request: Request, project_id: int, file_path: str | None = 
             .all()
         )
 
-        tree_data = scan_project_tree(project.root_path)
-        file_preview = read_project_file(project.root_path, file_path) if file_path else None
-
-        draft_capability_count = db.query(Capability).filter(
-            Capability.project_id == project_id,
-            Capability.status == "draft",
-        ).count()
-
-        active_capability_count = db.query(Capability).filter(
-            Capability.project_id == project_id,
-            Capability.status == "active",
-        ).count()
-
-        active_mandate_count = (
-            db.query(Mandate)
-            .join(Capability, Mandate.capability_id == Capability.id)
-            .filter(Capability.project_id == project_id, Mandate.status == "active")
-            .count()
+        latest_run = (
+            db.query(ObservationRun)
+            .filter(ObservationRun.project_id == project_id)
+            .order_by(ObservationRun.id.desc())
+            .first()
         )
 
-        completed_mandates = []
-        for mandate in completed_mandates_raw:
-            completed_mandates.append(
-                {
-                    "id": mandate.id,
-                    "title": mandate.title,
-                    "objective": mandate.objective,
-                    "evidence_summary": mandate.evidence_summary,
-                    "status": mandate.status,
-                    "work_items": parse_work_items(mandate.work_items_json),
-                }
+        observed_files = []
+        observed_components = []
+        component_links = []
+        observation_maps = []
+
+        if latest_run:
+            observed_file_rows = (
+                db.query(ObservedFile)
+                .filter(ObservedFile.observation_run_id == latest_run.id)
+                .order_by(ObservedFile.path.asc())
+                .limit(40)
+                .all()
             )
+
+            observed_component_rows = (
+                db.query(ObservedComponent)
+                .filter(ObservedComponent.observation_run_id == latest_run.id)
+                .order_by(ObservedComponent.source_path.asc())
+                .limit(40)
+                .all()
+            )
+
+            component_link_rows = (
+                db.query(ComponentLink, ObservedComponent.source_path)
+                .join(
+                    ObservedComponent,
+                    ComponentLink.source_component_id == ObservedComponent.id,
+                )
+                .filter(ComponentLink.observation_run_id == latest_run.id)
+                .order_by(ComponentLink.id.asc())
+                .limit(60)
+                .all()
+            )
+
+            observation_map_rows = (
+                db.query(ObservationMap)
+                .filter(ObservationMap.observation_run_id == latest_run.id)
+                .order_by(ObservationMap.id.asc())
+                .all()
+            )
+
+            observed_files = [
+                {
+                    "path": row.path,
+                    "file_kind": row.file_kind,
+                    "size_bytes": row.size_bytes,
+                    "line_count": row.line_count,
+                    "sha256": row.sha256,
+                }
+                for row in observed_file_rows
+            ]
+
+            observed_components = [
+                {
+                    "component_key": row.component_key,
+                    "component_kind": row.component_kind,
+                    "layer": row.layer,
+                    "source_path": row.source_path,
+                }
+                for row in observed_component_rows
+            ]
+
+            component_links = [
+                {
+                    "source_path": source_path,
+                    "relation_type": link_row.relation_type,
+                    "target_path": link_row.target_path,
+                }
+                for link_row, source_path in component_link_rows
+            ]
+
+            observation_maps = [
+                {
+                    "map_key": row.map_key,
+                    "map_json": parse_json_text(row.map_json),
+                }
+                for row in observation_map_rows
+            ]
     finally:
         db.close()
 
@@ -168,32 +231,33 @@ def project_overview(request: Request, project_id: int, file_path: str | None = 
             "active_capability": active_capability,
             "active_mandate": active_mandate,
             "work_items": work_items,
-            "completed_mandates": completed_mandates,
-            "draft_capability_count": draft_capability_count,
-            "active_capability_count": active_capability_count,
-            "active_mandate_count": active_mandate_count,
             "recent_logs": recent_logs,
-            "tree_data": tree_data,
-            "file_preview": file_preview,
-            "selected_file_path": file_path,
+            "latest_run": latest_run,
+            "observed_files": observed_files,
+            "observed_components": observed_components,
+            "component_links": component_links,
+            "observation_maps": observation_maps,
         },
     )
 
 
-@router.post("/projects/{project_id}/capture-tree")
-def capture_tree(project_id: int):
+@router.post("/projects/{project_id}/observe")
+def observe_project(project_id: int):
     db = SessionLocal()
     try:
         project = get_project_or_none(db, project_id)
+        if not project:
+            return RedirectResponse(url="/projects", status_code=303)
+        if not project.root_path:
+            return RedirectResponse(
+                url=f"/projects/{project_id}/setup?error=no-root-path",
+                status_code=303,
+            )
+        capture_observation_run(project.id, project.root_path)
     finally:
         db.close()
 
-    if not project or not project.root_path:
-        return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
-
-    count = capture_tree_snapshot(project_id, project.root_path)
-    return RedirectResponse(url=f"/projects/{project_id}?captured_tree={count}", status_code=303)
-
+    return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
 
 
 @router.post("/projects/{project_id}/work-log")
@@ -216,37 +280,6 @@ def create_work_log(project_id: int, command_text: str = Form(...), notes: str =
         db.close()
 
     return RedirectResponse(url=f"/projects/{project_id}", status_code=303)
-
-@router.post("/projects/{project_id}/ingest-terminal")
-def ingest_terminal(project_id: int):
-    from app.services.terminal_ingest import ingest_latest_session
-
-    count = ingest_latest_session(project_id)
-    return RedirectResponse(url=f"/projects/{project_id}?ingested={count}", status_code=303)
-
-
-@router.get("/projects/{project_id}/code-graph", response_class=HTMLResponse)
-def code_graph_view(request: Request, project_id: int, scope: str = "all", focus: str | None = None):
-    db = SessionLocal()
-    try:
-        project = get_project_or_none(db, project_id)
-    finally:
-        db.close()
-
-    if not project:
-        return RedirectResponse(url="/projects", status_code=303)
-
-    graph_data = build_code_graph(project.root_path, scope=scope, focus=focus)
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "code_graph.html",
-        {
-            "page_title": f"Code Graph — {project.name}",
-            "project": project,
-            "graph_data": graph_data,
-        },
-    )
 
 
 @router.get("/projects/{project_id}/setup", response_class=HTMLResponse)
@@ -292,68 +325,3 @@ def save_project(
         db.close()
 
     return RedirectResponse(url=f"/projects/{project_id}/setup", status_code=303)
-
-
-@router.get("/projects/{project_id}/file-preview", response_class=HTMLResponse)
-def file_preview_partial(request: Request, project_id: int, file_path: str):
-    db = SessionLocal()
-    try:
-        project = get_project_or_none(db, project_id)
-    finally:
-        db.close()
-
-    if not project:
-        return HTMLResponse("<div class='empty-state'>Project not found.</div>", status_code=404)
-
-    preview = read_project_file(project.root_path, file_path)
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "partials/file_preview.html",
-        {
-            "project": project,
-            "file_preview": preview,
-        },
-    )
-
-
-@router.get("/projects/{project_id}/snapshots", response_class=HTMLResponse)
-def snapshot_list(request: Request, project_id: int):
-    db = SessionLocal()
-    try:
-        rows = db.execute(
-            "SELECT id, captured_at, item_count FROM tree_snapshots WHERE project_id = ? ORDER BY id DESC",
-            (project_id,),
-        ).fetchall()
-    finally:
-        db.close()
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "snapshots.html",
-        {
-            "project_id": project_id,
-            "snapshots": rows,
-        },
-    )
-
-
-@router.get("/projects/{project_id}/snapshots/{snapshot_id}", response_class=HTMLResponse)
-def snapshot_detail(request: Request, project_id: int, snapshot_id: int):
-    db = SessionLocal()
-    try:
-        entries = db.execute(
-            "SELECT path, entry_type FROM file_tree_entries WHERE snapshot_id = ? ORDER BY path",
-            (snapshot_id,),
-        ).fetchall()
-    finally:
-        db.close()
-
-    return request.app.state.templates.TemplateResponse(
-        request,
-        "snapshot_detail.html",
-        {
-            "snapshot_id": snapshot_id,
-            "entries": entries,
-        },
-    )
