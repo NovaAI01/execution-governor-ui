@@ -216,6 +216,34 @@
 </section>
 
 <section class="card">
+    <h2>Recent Project Events</h2>
+    {% if recent_events %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Object</th>
+                    <th>Summary</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in recent_events %}
+                    <tr>
+                        <td>{{ row.id }}</td>
+                        <td>{{ row.event_type }}</td>
+                        <td>{{ row.related_object_type or "-" }}{% if row.related_object_id %} #{{ row.related_object_id }}{% endif %}</td>
+                        <td>{{ row.event_summary }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">No project events yet.</div>
+    {% endif %}
+</section>
+
+<section class="card">
     <h2>Scope Bindings</h2>
     {% if scope_bindings %}
         <table>

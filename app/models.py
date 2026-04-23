@@ -46,6 +46,11 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
     )
+    project_events = relationship(
+        "ProjectEvent",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Capability(Base):
@@ -426,3 +431,18 @@ class GovernorCheck(Base):
     observation_diff = relationship("ObservationDiff", back_populates="governor_checks")
     scope_binding = relationship("ScopeBinding", back_populates="governor_checks")
     policy_rule = relationship("PolicyRule", back_populates="governor_checks")
+
+
+class ProjectEvent(Base):
+    __tablename__ = "project_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    event_type = Column(String(64), nullable=False, index=True)
+    related_object_type = Column(String(64), nullable=True)
+    related_object_id = Column(Integer, nullable=True)
+    event_summary = Column(Text, nullable=False)
+    event_payload_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    project = relationship("Project", back_populates="project_events")

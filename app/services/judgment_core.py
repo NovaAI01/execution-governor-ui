@@ -2,6 +2,7 @@ import json
 
 from app.db import SessionLocal
 from app.models import GovernorCheck, ObservationDiff, PolicyRule, Project, ScopeBinding
+from app.services.timeline_core import record_project_event
 
 
 DEFAULT_SCOPE_BINDING_NAME = "default_project_scope"
@@ -140,9 +141,7 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
                 )
                 details = {
                     "blocked_diff_types": sorted(blocked),
-                    "observed_file_diff_types": sorted(
-                        {row.diff_type for row in latest_diff.file_diffs}
-                    ),
+                    "observed_file_diff_types": sorted({row.diff_type for row in latest_diff.file_diffs}),
                 }
             elif rule.rule_name == "no_removed_components":
                 has_violation = any(
@@ -150,9 +149,7 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
                 )
                 details = {
                     "blocked_diff_types": sorted(blocked),
-                    "observed_component_diff_types": sorted(
-                        {row.diff_type for row in latest_diff.component_diffs}
-                    ),
+                    "observed_component_diff_types": sorted({row.diff_type for row in latest_diff.component_diffs}),
                 }
             elif rule.rule_name == "no_removed_links":
                 has_violation = any(
@@ -160,9 +157,7 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
                 )
                 details = {
                     "blocked_diff_types": sorted(blocked),
-                    "observed_link_diff_types": sorted(
-                        {row.diff_type for row in latest_diff.link_diffs}
-                    ),
+                    "observed_link_diff_types": sorted({row.diff_type for row in latest_diff.link_diffs}),
                 }
             else:
                 has_violation = False
@@ -189,6 +184,19 @@ def run_judgment_for_latest_diff(project_id: int) -> dict:
             created_checks += 1
 
         db.commit()
+
+        record_project_event(
+            project_id=project_id,
+            event_type="judgment.created",
+            related_object_type="observation_diff",
+            related_object_id=latest_diff.id,
+            event_summary=f"Judgment created for observation diff {latest_diff.id}.",
+            event_payload={
+                "observation_diff_id": latest_diff.id,
+                "created_checks": created_checks,
+                "scope_binding_id": scope_binding_id,
+            },
+        )
 
         return {
             "observation_diff_id": latest_diff.id,

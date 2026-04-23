@@ -10,6 +10,7 @@ from app.models import (
     ObservedComponent,
     ObservedFile,
 )
+from app.services.timeline_core import record_project_event
 
 
 def _stable_json(raw: str | None):
@@ -250,6 +251,22 @@ def compare_observation_runs(project_id: int, from_run_id: int, to_run_id: int) 
         diff.summary_json = json.dumps(summary, sort_keys=True)
 
         db.commit()
+
+        record_project_event(
+            project_id=project_id,
+            event_type="comparison.created",
+            related_object_type="observation_diff",
+            related_object_id=diff.id,
+            event_summary=f"Observation diff {diff.id} created.",
+            event_payload={
+                "diff_id": diff.id,
+                "from_run_id": from_run_id,
+                "to_run_id": to_run_id,
+                "file_diff_count": file_diff_count,
+                "component_diff_count": component_diff_count,
+                "link_diff_count": link_diff_count,
+            },
+        )
 
         return {
             "diff_id": diff.id,

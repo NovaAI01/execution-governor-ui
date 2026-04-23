@@ -14,6 +14,7 @@ from app.models import (
     ObservedComponent,
     ObservedFile,
 )
+from app.services.timeline_core import record_project_event
 
 IGNORED_DIRS = {
     ".git",
@@ -514,6 +515,22 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
 
         db.commit()
 
+        record_project_event(
+            project_id=project_id,
+            event_type="observation.completed",
+            related_object_type="observation_run",
+            related_object_id=run.id,
+            event_summary=f"Observation run {run.id} completed.",
+            event_payload={
+                "run_id": run.id,
+                "status": run.status,
+                "file_count": file_count,
+                "component_count": component_count,
+                "link_count": link_count,
+                "unresolved_link_count": unresolved_link_count,
+            },
+        )
+
         return {
             "run_id": run.id,
             "status": run.status,
@@ -536,6 +553,19 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
                 failed_run.failure_reason = str(exc)
                 failed_run.completed_at = _utc_now()
                 recovery.commit()
+
+                record_project_event(
+                    project_id=project_id,
+                    event_type="observation.failed",
+                    related_object_type="observation_run",
+                    related_object_id=failed_run.id,
+                    event_summary=f"Observation run {failed_run.id} failed.",
+                    event_payload={
+                        "run_id": failed_run.id,
+                        "status": failed_run.status,
+                        "failure_reason": failed_run.failure_reason,
+                    },
+                )
         finally:
             recovery.close()
 

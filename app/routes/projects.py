@@ -19,6 +19,7 @@ from app.models import (
     ObservedFile,
     PolicyRule,
     Project,
+    ProjectEvent,
     ScopeBinding,
     WorkLog,
 )
@@ -142,6 +143,25 @@ def project_overview(request: Request, project_id: int):
             .limit(10)
             .all()
         )
+
+        recent_events = [
+            {
+                "id": row.id,
+                "event_type": row.event_type,
+                "related_object_type": row.related_object_type,
+                "related_object_id": row.related_object_id,
+                "event_summary": row.event_summary,
+                "event_payload_json": parse_json_text(row.event_payload_json),
+                "created_at": row.created_at,
+            }
+            for row in (
+                db.query(ProjectEvent)
+                .filter(ProjectEvent.project_id == project_id)
+                .order_by(ProjectEvent.id.desc())
+                .limit(20)
+                .all()
+            )
+        ]
 
         latest_run = (
             db.query(ObservationRun)
@@ -350,6 +370,7 @@ def project_overview(request: Request, project_id: int):
             "active_mandate": active_mandate,
             "work_items": work_items,
             "recent_logs": recent_logs,
+            "recent_events": recent_events,
             "latest_run": latest_run,
             "latest_diff": latest_diff,
             "latest_checks": latest_checks,
