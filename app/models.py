@@ -90,6 +90,11 @@ class ObservationRun(Base):
     file_count = Column(Integer, nullable=False, default=0)
     component_count = Column(Integer, nullable=False, default=0)
     link_count = Column(Integer, nullable=False, default=0)
+    unresolved_link_count = Column(Integer, nullable=False, default=0)
+    included_file_count = Column(Integer, nullable=False, default=0)
+    excluded_file_count = Column(Integer, nullable=False, default=0)
+    max_files_limit = Column(Integer, nullable=False, default=500)
+    failure_reason = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=False, default=utc_now)
     completed_at = Column(DateTime, nullable=True)
 
@@ -165,7 +170,6 @@ class ObservedComponent(Base):
     layer = Column(String(64), nullable=True)
     metadata_json = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=utc_now)
-
     observation_run = relationship("ObservationRun", back_populates="observed_components")
     observed_file = relationship("ObservedFile", back_populates="observed_components")
     links_from = relationship(
@@ -179,6 +183,7 @@ class ObservedComponent(Base):
         back_populates="target_component",
         foreign_keys="ComponentLink.target_component_id",
     )
+
 
 class ComponentLink(Base):
     __tablename__ = "component_links"

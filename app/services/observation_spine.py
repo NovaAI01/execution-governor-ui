@@ -3,6 +3,7 @@ import hashlib
 import json
 import mimetypes
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.db import SessionLocal
@@ -62,6 +63,10 @@ LAYER_LABELS = {
 }
 
 
+def _utc_now():
+    return datetime.now(UTC)
+
+
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -83,29 +88,39 @@ def _safe_read_text(path: Path, max_chars: int = 50000) -> str | None:
     return text[:max_chars]
 
 
-def _should_ignore_file(rel: Path) -> bool:
+def _should_ignore_file(rel: Path) -> tuple[bool, str | None]:
     if any(part in IGNORED_DIRS for part in rel.parts):
-        return True
+        return True, "ignored_dir"
     if rel.name in IGNORED_FILE_NAMES:
-        return True
+        return True, "ignored_name"
     if any(str(rel).endswith(suffix) for suffix in IGNORED_SUFFIXES):
-        return True
-    return False
+        return True, "ignored_suffix"
+    return False, None
 
 
 def _iter_project_files(root: Path, max_files: int):
-    count = 0
+    included = []
+    excluded = []
+
     for path in sorted(root.rglob("*")):
-        if count >= max_files:
-            break
+        rel = path.relative_to(root)
+
         if not path.is_file():
             continue
-        rel = path.relative_to(root)
-        if _should_ignore_file(rel):
-            continue
-        count += 1
-        yield path, str(rel)
 
+        if any(part in IGNORED_DIRS for part in rel.parts):
+            continue
+
+        ignored, reason = _should_ignore_file(rel)
+        if ignored:
+            excluded.append({"path": str(rel), "reason": reason})
+            continue
+
+        included.append({"path": path, "rel_path": str(rel)})
+        if len(included) >= max_files:
+            break
+
+    return included, excluded
 
 def _layer_for_path(rel_path: str) -> str:
     if rel_path in LAYER_LABELS:
@@ -166,6 +181,7 @@ def _parse_python_content(root: Path, text: str) -> dict:
     try:
         tree = ast.parse(text)
     except SyntaxError:
+        result["parse_error"] = "syntax_error"
         return result
 
     for node in ast.walk(tree):
@@ -236,6 +252,13 @@ def _parse_python_content(root: Path, text: str) -> dict:
 
 def _parse_template_content(root: Path, text: str) -> dict:
     includes = []
+    extends_match = re.search(r'\{%\s*extends\s+"([^"]+)"\s*%\}', text)
+    extends_target = None
+
+    if extends_match:
+        extends_name = extends_match.group(1)
+        extends_target = _resolve_template_target(root, extends_name)
+
     for match in re.findall(r'\{%\s*include\s+"([^"]+)"\s*%\}', text):
         target_path = _resolve_template_target(root, match)
         if target_path:
@@ -246,7 +269,21 @@ def _parse_template_content(root: Path, text: str) -> dict:
                     "label": match,
                 }
             )
-    return {"includes": includes}
+
+    return {
+        "extends": extends_target,
+        "includes": includes,
+    }
+
+
+def _build_policy_map(max_files: int) -> dict:
+    return {
+        "max_files": max_files,
+        "ignored_dirs": sorted(IGNORED_DIRS),
+        "ignored_file_names": sorted(IGNORED_FILE_NAMES),
+        "ignored_suffixes": sorted(IGNORED_SUFFIXES),
+        "text_extensions": sorted(TEXT_EXTENSIONS),
+    }
 
 
 def capture_observation_run(project_id: int, root_path: str, max_files: int = 500) -> dict:
@@ -255,18 +292,24 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
         raise ValueError("Project root does not exist.")
 
     db = SessionLocal()
+    run = ObservationRun(
+        project_id=project_id,
+        root_path=str(root),
+        status="running",
+        max_files_limit=max_files,
+        started_at=_utc_now(),
+    )
+
     try:
-        run = ObservationRun(
-            project_id=project_id,
-            root_path=str(root),
-            status="running",
-        )
         db.add(run)
         db.flush()
+
+        included_files, excluded_files = _iter_project_files(root, max_files=max_files)
 
         file_count = 0
         component_count = 0
         link_count = 0
+        unresolved_link_count = 0
 
         components_by_path = {}
         pending_links = []
@@ -274,7 +317,10 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
         kind_counts = {}
         layer_counts = {}
 
-        for path, rel_path in _iter_project_files(root, max_files=max_files):
+        for item in included_files:
+            path = item["path"]
+            rel_path = item["rel_path"]
+
             raw = path.read_bytes()
             content_text = _safe_read_text(path)
             line_count = content_text.count("\n") + 1 if content_text else None
@@ -295,28 +341,60 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
 
             component_kind = _component_kind_for_path(rel_path)
             layer = _layer_for_path(rel_path)
-            metadata = {}
+            metadata = {
+                "file_kind": file_kind,
+                "size_bytes": len(raw),
+                "line_count": line_count,
+            }
 
             if content_text and rel_path.endswith(".py"):
-                metadata = _parse_python_content(root, content_text)
+                parsed = _parse_python_content(root, content_text)
+                metadata.update(
+                    {
+                        "class_count": len(parsed.get("classes", [])),
+                        "function_count": len(parsed.get("functions", [])),
+                        "http_route_count": len(parsed.get("http_routes", [])),
+                        "render_count": len(parsed.get("renders", [])),
+                        "import_count": len(parsed.get("imports", [])),
+                        "http_routes": parsed.get("http_routes", []),
+                        "classes": parsed.get("classes", []),
+                        "functions": parsed.get("functions", []),
+                    }
+                )
+                if parsed.get("parse_error"):
+                    metadata["parse_error"] = parsed["parse_error"]
+
                 pending_links.extend(
                     [
                         (rel_path, item["target_path"], item["relation_type"], item["label"])
-                        for item in metadata["imports"]
+                        for item in parsed["imports"]
                     ]
                 )
                 pending_links.extend(
                     [
                         (rel_path, item["target_path"], item["relation_type"], item["label"])
-                        for item in metadata["renders"]
+                        for item in parsed["renders"]
                     ]
                 )
+
             elif content_text and rel_path.endswith(".html"):
-                metadata = _parse_template_content(root, content_text)
+                parsed = _parse_template_content(root, content_text)
+                metadata.update(
+                    {
+                        "include_count": len(parsed.get("includes", [])),
+                        "extends": parsed.get("extends"),
+                    }
+                )
+
+                if parsed.get("extends"):
+                    pending_links.append(
+                        (rel_path, parsed["extends"], "extends", "template_extends")
+                    )
+
                 pending_links.extend(
                     [
                         (rel_path, item["target_path"], item["relation_type"], item["label"])
-                        for item in metadata["includes"]
+                        for item in parsed["includes"]
                     ]
                 )
 
@@ -338,9 +416,12 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
             kind_counts[component_kind] = kind_counts.get(component_kind, 0) + 1
             layer_counts[layer] = layer_counts.get(layer, 0) + 1
 
+        unresolved_links = []
+
         for source_path, target_path, relation_type, label in pending_links:
             source_component = components_by_path.get(source_path)
             target_component = components_by_path.get(target_path)
+
             if not source_component:
                 continue
 
@@ -350,10 +431,36 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
                 target_component_id=target_component.id if target_component else None,
                 relation_type=relation_type,
                 target_path=target_path,
-                metadata_json=json.dumps({"label": label}, sort_keys=True),
+                metadata_json=json.dumps(
+                    {
+                        "label": label,
+                        "is_resolved": bool(target_component),
+                    },
+                    sort_keys=True,
+                ),
             )
             db.add(link)
             link_count += 1
+
+            if not target_component:
+                unresolved_link_count += 1
+                unresolved_links.append(
+                    {
+                        "source_path": source_path,
+                        "relation_type": relation_type,
+                        "target_path": target_path,
+                        "label": label,
+                    }
+                )
+
+        run.status = "completed"
+        run.file_count = file_count
+        run.component_count = component_count
+        run.link_count = link_count
+        run.unresolved_link_count = unresolved_link_count
+        run.included_file_count = len(included_files)
+        run.excluded_file_count = len(excluded_files)
+        run.completed_at = _utc_now()
 
         digest_map = {
             "run_id": run.id,
@@ -362,6 +469,9 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
                 "files": file_count,
                 "components": component_count,
                 "links": link_count,
+                "unresolved_links": unresolved_link_count,
+                "included_files": len(included_files),
+                "excluded_files": len(excluded_files),
             },
             "component_kinds": kind_counts,
             "layers": layer_counts,
@@ -386,21 +496,49 @@ def capture_observation_run(project_id: int, root_path: str, max_files: int = 50
             )
         )
 
-        run.status = "completed"
-        run.file_count = file_count
-        run.component_count = component_count
-        run.link_count = link_count
+        db.add(
+            ObservationMap(
+                observation_run_id=run.id,
+                map_key="observation_policy",
+                map_json=json.dumps(_build_policy_map(max_files), indent=2, sort_keys=True),
+            )
+        )
+
+        db.add(
+            ObservationMap(
+                observation_run_id=run.id,
+                map_key="unresolved_links",
+                map_json=json.dumps(unresolved_links, indent=2, sort_keys=True),
+            )
+        )
 
         db.commit()
 
         return {
             "run_id": run.id,
+            "status": run.status,
             "file_count": file_count,
             "component_count": component_count,
             "link_count": link_count,
+            "unresolved_link_count": unresolved_link_count,
+            "included_file_count": len(included_files),
+            "excluded_file_count": len(excluded_files),
         }
-    except Exception:
+
+    except Exception as exc:
         db.rollback()
+
+        recovery = SessionLocal()
+        try:
+            failed_run = recovery.query(ObservationRun).filter(ObservationRun.id == run.id).first()
+            if failed_run:
+                failed_run.status = "failed"
+                failed_run.failure_reason = str(exc)
+                failed_run.completed_at = _utc_now()
+                recovery.commit()
+        finally:
+            recovery.close()
+
         raise
     finally:
         db.close()

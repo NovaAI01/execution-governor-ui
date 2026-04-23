@@ -199,6 +199,7 @@ def project_overview(request: Request, project_id: int):
                     "component_kind": row.component_kind,
                     "layer": row.layer,
                     "source_path": row.source_path,
+                    "metadata_json": parse_json_text(row.metadata_json),
                 }
                 for row in observed_component_rows
             ]
@@ -208,6 +209,7 @@ def project_overview(request: Request, project_id: int):
                     "source_path": source_path,
                     "relation_type": link_row.relation_type,
                     "target_path": link_row.target_path,
+                    "metadata_json": parse_json_text(link_row.metadata_json),
                 }
                 for link_row, source_path in component_link_rows
             ]

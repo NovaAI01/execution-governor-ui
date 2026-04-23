@@ -106,6 +106,26 @@
                 <div class="detail-value">{{ latest_run.link_count }}</div>
             </div>
             <div class="detail-block">
+                <div class="detail-label">Unresolved Links</div>
+                <div class="detail-value">{{ latest_run.unresolved_link_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Included Files</div>
+                <div class="detail-value">{{ latest_run.included_file_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Excluded Files</div>
+                <div class="detail-value">{{ latest_run.excluded_file_count }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Max Files Limit</div>
+                <div class="detail-value">{{ latest_run.max_files_limit }}</div>
+            </div>
+            <div class="detail-block">
+                <div class="detail-label">Failure Reason</div>
+                <div class="detail-value preserve">{{ latest_run.failure_reason or "-" }}</div>
+            </div>
+            <div class="detail-block">
                 <div class="detail-label">Root Path</div>
                 <div class="detail-value preserve">{{ latest_run.root_path }}</div>
             </div>
@@ -182,6 +202,7 @@
                     <th>Source</th>
                     <th>Relation</th>
                     <th>Target</th>
+                    <th>Resolved</th>
                 </tr>
             </thead>
             <tbody>
@@ -190,6 +211,13 @@
                         <td><code>{{ row.source_path }}</code></td>
                         <td>{{ row.relation_type }}</td>
                         <td><code>{{ row.target_path or "-" }}</code></td>
+                        <td>
+                            {% if row.metadata_json and row.metadata_json.is_resolved %}
+                                yes
+                            {% else %}
+                                no
+                            {% endif %}
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>
